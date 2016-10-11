@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package common;
+
+service VMServer {
+    //rpc UploadFiles(File) returns (UploadResponse) {}
+    rpc StartProxy(IPAddress) returns (StartProxyResponse) {}
+}
+
+message File {
+    int64 size = 1;
+    bytes data = 2;
+}
+
+message UploadResponse {}
+
+message IPAddress {
+    string ip = 1;
+}
+
+message StartProxyResponse {}
