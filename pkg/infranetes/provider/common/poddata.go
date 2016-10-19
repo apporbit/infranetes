@@ -25,7 +25,7 @@ type PodData struct {
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
-	labels map[string]string, ip string, client *Client, providerData interface{}) *PodData {
+	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client *Client, providerData interface{}) *PodData {
 	return &PodData{
 		VM:           vm,
 		Id:           id,
@@ -34,6 +34,7 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 		Labels:       labels,
 		CreatedAt:    time.Now().Unix(),
 		Ip:           ip,
+		Linux:        linux,
 		Client:       client,
 		PodState:     kubeapi.PodSandBoxState_READY,
 		ProviderData: providerData,

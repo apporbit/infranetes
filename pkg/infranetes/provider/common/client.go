@@ -83,11 +83,11 @@ func (c *Client) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.
 	return resp, err
 }
 
-func (c *Client) StartProxy(ip string) error {
+func (c *Client) StartProxy(ip *string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	_, err := c.vmclient.StartProxy(context.Background(), &common.IPAddress{Ip: ip})
+	_, err := c.vmclient.StartProxy(context.Background(), &common.IPAddress{Ip: *ip})
 
 	return err
 }
@@ -111,7 +111,7 @@ func CreateClient(ip string) (*Client, error) {
 			version, err1 := client.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
 			if err1 == nil {
 				glog.Infof("CreateClient: version = %+v", version)
-				err2 := client.StartProxy(ip)
+				err2 := client.StartProxy(flags.MasterIP)
 				if err2 != nil {
 					glog.Warningf("Couldn't start kube-proxy: %v", err2)
 				}
