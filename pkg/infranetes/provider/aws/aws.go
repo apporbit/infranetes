@@ -128,7 +128,7 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		vmStateLastChecked: time.Now(),
 	}
 
-	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, client, providerData)
+	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, providerData)
 
 	return podData, nil
 }

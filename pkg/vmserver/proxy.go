@@ -4,6 +4,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/common"
 	"golang.org/x/net/context"
 
+	"github.com/golang/glog"
 	kubeproxy "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/cmd/kube-proxy/app/options"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"
@@ -29,10 +30,14 @@ func (m *VMserver) StartProxy(ctx context.Context, ip *common.IPAddress) (*commo
 
 	server, err := kubeproxy.NewProxyServerDefault(config)
 	if err != nil {
+		glog.Infof("NewProxyServerDefault failed: %v", err)
 		return nil, err
 	}
 
-	go server.Run()
+	go func() {
+		err := server.Run()
+		glog.Infof("server.Run failed: %v", err)
+	}()
 
 	return &common.StartProxyResponse{}, nil
 }
