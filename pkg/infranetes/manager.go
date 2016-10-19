@@ -7,15 +7,16 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
-
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 )
 
 var (
@@ -26,6 +27,9 @@ type Manager struct {
 	server       *grpc.Server
 	podProvider  provider.PodProvider
 	contProvider provider.ImageProvider
+
+	vmMap     map[string]*common.PodData
+	vmMapLock sync.RWMutex
 }
 
 func NewInfranetesManager(podProvider provider.PodProvider, contProvider provider.ImageProvider) (*Manager, error) {
@@ -33,6 +37,7 @@ func NewInfranetesManager(podProvider provider.PodProvider, contProvider provide
 		server:       grpc.NewServer(),
 		podProvider:  podProvider,
 		contProvider: contProvider,
+		vmMap:        make(map[string]*common.PodData),
 	}
 
 	manager.registerServer()
@@ -80,7 +85,7 @@ func (m *Manager) RunPodSandbox(ctx context.Context, req *kubeapi.RunPodSandboxR
 	cookie := rand.Int()
 	glog.Infof("%d: RunPodSandbox: req = %+v", cookie, req)
 
-	resp, err := m.podProvider.RunPodSandbox(req)
+	resp, err := m.createSandbox(req)
 
 	glog.Infof("%d: RunPodSandbox: resp = %+v, err = %v", cookie, resp, err)
 
@@ -91,36 +96,7 @@ func (m *Manager) StopPodSandbox(ctx context.Context, req *kubeapi.StopPodSandbo
 	cookie := rand.Int()
 	glog.Infof("%d: StopPodSandbox: req = %+v", cookie, req)
 
-	podId := req.GetPodSandboxId()
-	client, err := m.podProvider.GetClient(podId)
-	if err != nil {
-		glog.Infof("%d: StopPodSandbox: couldn't get client for %s: %v", cookie, podId, err)
-		return nil, fmt.Errorf("StopPodSandbox: couldn't get client for %s: %v", podId, err)
-	}
-	if client == nil { // This sandbox has been stopped
-		glog.Infof("%d: StopPodSandbox: got nil client for %s: %v", cookie, podId, err)
-		return nil, fmt.Errorf("StopPodSandbox: got nil client for %s: %v", podId, err)
-	}
-
-	contResp, err := client.ListContainers(&kubeapi.ListContainersRequest{})
-	if err != nil {
-		glog.Infof("%d: StopPodSandbox: ListContainers failed for %s: %v", cookie, podId, err)
-		return nil, fmt.Errorf("StopPodSandbox: ListContainers failed for %s: %v", podId, err)
-	}
-
-	for _, cont := range contResp.Containers {
-		timeout := int64(60)
-		contReq := &kubeapi.StopContainerRequest{
-			ContainerId: cont.Id,
-			Timeout:     &timeout,
-		}
-		if _, err := client.StopContainer(contReq); err != nil {
-			glog.Warningf("%d: StopPodSandbox: StopContainer failed in pod %s for container %s: %v", cookie, podId, *cont.Id, err)
-			continue
-		}
-	}
-
-	resp, err := m.podProvider.StopPodSandbox(req)
+	resp, err := m.stopSandbox(req)
 
 	glog.Infof("%d: StopPodSandbox: resp = %+v, err = %v", cookie, resp, err)
 
@@ -131,7 +107,9 @@ func (m *Manager) RemovePodSandbox(ctx context.Context, req *kubeapi.RemovePodSa
 	cookie := rand.Int()
 	glog.Infof("%d: RemovePodSandbox: req = %+v", cookie, req)
 
-	resp, err := m.podProvider.RemovePodSandbox(req)
+	err := m.removePodSandbox(req)
+
+	resp := &kubeapi.RemovePodSandboxResponse{}
 
 	glog.Infof("%d: RemovePodSandbox: resp = %+v, err = %v", cookie, resp, err)
 
@@ -142,7 +120,7 @@ func (m *Manager) PodSandboxStatus(ctx context.Context, req *kubeapi.PodSandboxS
 	cookie := rand.Int()
 	glog.Infof("%d: PodSandboxStatus: req = %+v", cookie, req)
 
-	resp, err := m.podProvider.PodSandboxStatus(req)
+	resp, err := m.podSandboxStatus(req)
 
 	glog.Infof("%d: PodSandboxStatus: resp = %+v, err = %v", cookie, resp, err)
 
@@ -153,9 +131,9 @@ func (m *Manager) ListPodSandbox(ctx context.Context, req *kubeapi.ListPodSandbo
 	cookie := rand.Int()
 	glog.V(1).Infof("%d: ListPodSandbox: req = %+v", cookie, req)
 
-	resp, err := m.podProvider.ListPodSandbox(req)
+	resp, err := m.listPodSandbox(req)
 
-	glog.V(1).Infof("%d: ListPodSandbox: resp = %+v, err = %v", cookie, resp, err)
+	glog.V(1).Infof("%d: ListPodSandbox: resp = %+v, err = %v", cookie, resp, nil)
 
 	return resp, err
 }
@@ -166,7 +144,7 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 
 	podId := req.GetPodSandboxId()
 
-	client, err := m.podProvider.GetClient(podId)
+	client, err := m.getClient(podId)
 	if err != nil {
 		glog.Infof("%d: CreateContainer: failed to get client for sandbox %v", podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
@@ -186,7 +164,7 @@ func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContaine
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.podProvider.GetClient(podId)
+	client, err := m.getClient(podId)
 	if err != nil {
 		glog.Infof("%d: StartContainer: failed to get client for sandbox %v", cookie, podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
@@ -206,7 +184,7 @@ func (m *Manager) StopContainer(ctx context.Context, req *kubeapi.StopContainerR
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.podProvider.GetClient(podId)
+	client, err := m.getClient(podId)
 	if err != nil {
 		glog.Infof("%d: StopContainer: failed to get client for sandbox %v", cookie, podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
@@ -226,7 +204,7 @@ func (m *Manager) RemoveContainer(ctx context.Context, req *kubeapi.RemoveContai
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.podProvider.GetClient(podId)
+	client, err := m.getClient(podId)
 	if err != nil {
 		glog.Infof("%d: RemoveContainer: failed to get client for sandbox %v", cookie, podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
@@ -243,40 +221,11 @@ func (m *Manager) ListContainers(ctx context.Context, req *kubeapi.ListContainer
 	cookie := rand.Int()
 	glog.V(1).Infof("%d: ListContainers: req = %+v", cookie, req)
 
-	results := []*kubeapi.Container{}
+	resp, err := m.listContainers(req)
 
-	for _, podId := range m.podProvider.GetVMList() {
-		sandboxId := ""
-		if req.Filter != nil {
-			sandboxId = req.Filter.GetPodSandboxId()
-		}
-		if sandboxId == "" || sandboxId == podId {
-			client, err := m.podProvider.GetClient(podId)
-			if err != nil {
-				glog.Warningf("ListContainers: couldn't get client for %s: %v", podId, err)
-				continue
-			}
-			if client == nil { // This sandbox has been stopped
-				continue
-			}
+	glog.V(1).Infof("%d: ListContainers: resp = %+v, err = %v", cookie, resp, err)
 
-			resp, err := client.ListContainers(req)
-			if err != nil {
-				glog.Warningf("%d: ListContainers: grpc ListContainers failed: %v", cookie, err)
-				continue
-			}
-
-			results = append(results, resp.Containers...)
-		}
-	}
-
-	resp := &kubeapi.ListContainersResponse{
-		Containers: results,
-	}
-
-	glog.V(1).Infof("%d: ListContainers: resp = %+v, err = %v", cookie, resp, nil)
-
-	return resp, nil
+	return resp, err
 }
 
 func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
@@ -286,7 +235,7 @@ func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSta
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.podProvider.GetClient(podId)
+	client, err := m.getClient(podId)
 	if err != nil {
 		glog.Infof("%d: ContainerStatus: failed to get client for sandbox %v", cookie, podId)
 		return nil, fmt.Errorf("failed to get client for sandbox %v", podId)

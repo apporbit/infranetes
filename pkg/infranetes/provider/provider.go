@@ -9,15 +9,12 @@ import (
 )
 
 type PodProvider interface {
-	RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.RunPodSandboxResponse, error)
-	StopPodSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.StopPodSandboxResponse, error)
-	RemovePodSandbox(req *kubeapi.RemovePodSandboxRequest) (*kubeapi.RemovePodSandboxResponse, error)
-	PodSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubeapi.PodSandboxStatusResponse, error)
-	ListPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.ListPodSandboxResponse, error)
+	RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error)
+	StopPodSandbox(podData *common.PodData)
+	RemovePodSandbox(podData *common.PodData)
+	PodSandboxStatus(podData *common.PodData)
 
-	GetVMList() []string
-
-	GetClient(podname string) (*common.Client, error)
+	UpdatePodState(podData *common.PodData)
 }
 
 type ImageProvider interface {

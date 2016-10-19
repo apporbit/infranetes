@@ -83,7 +83,19 @@ func (c *Client) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.
 	return resp, err
 }
 
+func (c *Client) StartProxy(ip string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	_, err := c.vmclient.StartProxy(context.Background(), &common.IPAddress{Ip: ip})
+
+	return err
+}
+
 func (c *Client) Close() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	c.conn.Close()
 }
 
@@ -99,17 +111,19 @@ func CreateClient(ip string) (*Client, error) {
 			version, err1 := client.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
 			if err1 == nil {
 				glog.Infof("CreateClient: version = %+v", version)
-				err2 := client.StartProxy(*flags.MasterIP)
+				err2 := client.StartProxy(ip)
 				if err2 != nil {
 					glog.Warningf("Couldn't start kube-proxy: %v", err2)
 				}
 
+				glog.Infof("Waiting on Docker")
 				for j := 0; j < 5; j++ {
 					_, err := client.ListContainers(&kubeapi.ListContainersRequest{})
 					if err != nil {
 						glog.Infof("CreateClient: docker isn't ready (%d): %v", j, err)
 						time.Sleep(5 * time.Second)
 					} else {
+						glog.Infof("CreateClient: docker is ready")
 						break
 					}
 				}
@@ -125,12 +139,6 @@ func CreateClient(ip string) (*Client, error) {
 	}
 
 	return nil, err
-}
-
-func (c *Client) StartProxy(ip string) error {
-	_, err := c.vmclient.StartProxy(context.Background(), &common.IPAddress{Ip: ip})
-
-	return err
 }
 
 func internalCreateClient(ip string) (*Client, error) {
