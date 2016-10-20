@@ -20,11 +20,18 @@ import (
 type dockerProvider struct {
 }
 
+var client *dockerclient.Client
+
 func init() {
 	provider.ImageProviders.RegisterProvider("docker", NewDockerProvider)
 }
 
 func NewDockerProvider() (provider.ImageProvider, error) {
+	var err error
+	if client, err = dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
+		return nil, err
+	}
+
 	return &dockerProvider{}, nil
 }
 
@@ -58,11 +65,6 @@ func (d *dockerProvider) Exec(sstream kubeapi.RuntimeService_ExecServer) error {
 
 func (d *dockerProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
 	opts := dockertypes.ImageListOptions{}
-
-	client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("ListImages: docker NewClient Failed (%v)", err)
-	}
 
 	filter := req.Filter
 	if filter != nil {
@@ -115,11 +117,6 @@ func (d *dockerProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.
 }
 
 func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
-	client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("PullImage: docker NewClient Failed (%v)", err)
-	}
-
 	pullresp, err := client.ImagePull(context.Background(), req.Image.GetImage(), dockertypes.ImagePullOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("ImagePull Failed (%v)\n", err)
@@ -146,12 +143,7 @@ func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pull
 }
 
 func (d *dockerProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
-	client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("PullImage: docker NewClient Failed (%v)", err)
-	}
-
-	_, err = client.ImageRemove(context.Background(), req.Image.GetImage(), dockertypes.ImageRemoveOptions{PruneChildren: true})
+	_, err := client.ImageRemove(context.Background(), req.Image.GetImage(), dockertypes.ImageRemoveOptions{PruneChildren: true})
 
 	resp := &kubeapi.RemoveImageResponse{}
 
