@@ -18,21 +18,23 @@ import (
 )
 
 type dockerProvider struct {
+	client *dockerclient.Client
 }
-
-var client *dockerclient.Client
 
 func init() {
 	provider.ImageProviders.RegisterProvider("docker", NewDockerProvider)
 }
 
 func NewDockerProvider() (provider.ImageProvider, error) {
-	var err error
-	if client, err = dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
+	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
 		return nil, err
-	}
+	} else {
+		dockerProvider := &dockerProvider{
+			client: client,
+		}
 
-	return &dockerProvider{}, nil
+		return dockerProvider, nil
+	}
 }
 
 func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
@@ -73,7 +75,7 @@ func (d *dockerProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.Li
 		}
 	}
 
-	images, err := client.ImageList(context.Background(), opts)
+	images, err := d.client.ImageList(context.Background(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +119,7 @@ func (d *dockerProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.
 }
 
 func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
-	pullresp, err := client.ImagePull(context.Background(), req.Image.GetImage(), dockertypes.ImagePullOptions{})
+	pullresp, err := d.client.ImagePull(context.Background(), req.Image.GetImage(), dockertypes.ImagePullOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("ImagePull Failed (%v)\n", err)
 	}
@@ -143,7 +145,7 @@ func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pull
 }
 
 func (d *dockerProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
-	_, err := client.ImageRemove(context.Background(), req.Image.GetImage(), dockertypes.ImageRemoveOptions{PruneChildren: true})
+	_, err := d.client.ImageRemove(context.Background(), req.Image.GetImage(), dockertypes.ImageRemoveOptions{PruneChildren: true})
 
 	resp := &kubeapi.RemoveImageResponse{}
 
