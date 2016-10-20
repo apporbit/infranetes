@@ -28,9 +28,6 @@ func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.Run
 func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.StopPodSandboxResponse, error) {
 	podId := req.GetPodSandboxId()
 
-	m.vmMapLock.RLock()
-	defer m.vmMapLock.RUnlock()
-
 	podData, err := m.getPodData(podId)
 	if err != nil {
 		msg := fmt.Sprintf("stopSandbox: couldn't get podData for %s: %v", podId, err)
@@ -76,9 +73,6 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 }
 
 func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
-	m.vmMapLock.Lock()
-	defer m.vmMapLock.Unlock()
-
 	podData, err := m.getPodData(req.GetPodSandboxId())
 	if err != nil {
 		return fmt.Errorf("removePodSandbox: %v", err)
@@ -100,9 +94,6 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 }
 
 func (m *Manager) podSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubeapi.PodSandboxStatusResponse, error) {
-	m.vmMapLock.RLock()
-	defer m.vmMapLock.RUnlock()
-
 	podData, err := m.getPodData(req.GetPodSandboxId())
 	if err != nil {
 		return nil, fmt.Errorf("PodSandboxStatus: %v", err)
@@ -123,17 +114,14 @@ func (m *Manager) podSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubea
 }
 
 func (m *Manager) listPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.ListPodSandboxResponse, error) {
-	m.vmMapLock.RLock()
-	defer m.vmMapLock.RUnlock()
-
 	sandboxes := []*kubeapi.PodSandbox{}
 
 	glog.V(1).Infof("listPodSandbox: len of vmMap = %v", len(m.vmMap))
 
-	for id, podData := range m.vmMap {
+	for _, podData := range m.copyVMMap() {
 		// podData lock is taken and released in filter
 		if sandbox, ok := m.filter(podData, req.Filter); ok {
-			glog.V(1).Infof("listPodSandbox Appending a sandbox for %v to sandboxes", id)
+			glog.V(1).Infof("listPodSandbox Appending a sandbox for %v to sandboxes", *podData.Id)
 			sandboxes = append(sandboxes, sandbox)
 		}
 	}
@@ -168,31 +156,9 @@ func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxF
 func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
 	results := []*kubeapi.Container{}
 
-	m.vmMapLock.RLock()
-	defer m.vmMapLock.RUnlock()
-
-	for _, podId := range m.getVMList() {
-		sandboxId := ""
-		if req.Filter != nil {
-			sandboxId = req.Filter.GetPodSandboxId()
-		}
-		if sandboxId == "" || sandboxId == podId {
-			client, err := m.getClientLocked(podId)
-			if err != nil {
-				glog.Warningf("ListContainers: couldn't get client for %s: %v", podId, err)
-				continue
-			}
-			if client == nil { // This sandbox has been stopped
-				continue
-			}
-
-			resp, err := client.ListContainers(req)
-			if err != nil {
-				glog.Warningf("listContainers: grpc ListContainers failed: %v", err)
-				continue
-			}
-
-			results = append(results, resp.Containers...)
+	for _, podData := range m.copyVMMap() {
+		if containers, ok := listSandbox(req, podData); ok {
+			results = append(results, containers...)
 		}
 	}
 
@@ -203,8 +169,37 @@ func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.L
 	return resp, nil
 }
 
+func listSandbox(req *kubeapi.ListContainersRequest, podData *common.PodData) ([]*kubeapi.Container, bool) {
+	podData.StateLock.Lock()
+	defer podData.StateLock.Unlock()
+
+	sandboxId := ""
+	if req.Filter != nil {
+		sandboxId = req.Filter.GetPodSandboxId()
+	}
+	if sandboxId != "" && sandboxId != *podData.Id {
+		return nil, false
+	}
+
+	client := podData.Client
+	if client == nil { // This sandbox has been removed
+		return nil, false
+	}
+
+	resp, err := client.ListContainers(req)
+	if err != nil {
+		glog.Warningf("listContainers: grpc ListContainers failed: %v", err)
+		return nil, false
+	}
+
+	return resp.Containers, true
+}
+
 /* Must be at least holding the vmmap RLock */
 func (m *Manager) getPodData(id string) (*common.PodData, error) {
+	m.vmMapLock.RLock()
+	defer m.vmMapLock.RUnlock()
+
 	podData, ok := m.vmMap[id]
 	if !ok {
 		return nil, fmt.Errorf("Invalid PodSandboxId (%v)", id)
@@ -229,11 +224,26 @@ func (m *Manager) getClientLocked(podName string) (*common.Client, error) {
 	return podData.Client, nil
 }
 
-func (v *Manager) getVMList() []string {
+func (m *Manager) getVMList() []string {
+	m.vmMapLock.RLock()
+	defer m.vmMapLock.RUnlock()
+
 	ret := []string{}
 
-	for name := range v.vmMap {
+	for name := range m.vmMap {
 		ret = append(ret, name)
+	}
+
+	return ret
+}
+
+func (m *Manager) copyVMMap() map[string]*common.PodData {
+	m.vmMapLock.RLock()
+	defer m.vmMapLock.RUnlock()
+
+	ret := make(map[string]*common.PodData, len(m.vmMap))
+	for key, val := range m.vmMap {
+		ret[key] = val
 	}
 
 	return ret

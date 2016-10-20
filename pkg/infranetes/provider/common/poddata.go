@@ -51,6 +51,7 @@ func (p *PodData) StopPod() error {
 
 func (p *PodData) RemovePod() error {
 	p.Client.Close()
+	p.Client = nil
 
 	return nil
 }
@@ -83,6 +84,10 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 }
 
 func (p *PodData) Filter(filter *kubeapi.PodSandboxFilter) (bool, string) {
+	if p.Client == nil {
+		return true, fmt.Sprintf("no longer exists, client is nil")
+	}
+
 	if filter != nil {
 		if filter.GetId() != "" && filter.GetId() != *p.Id {
 			return true, fmt.Sprintf("doesn't match %v", filter.GetId())
