@@ -5,33 +5,36 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/sjpotter/infranetes/cmd/vmserver/flags"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
+
+	_ "github.com/sjpotter/infranetes/pkg/vmserver/docker"
+	_ "github.com/sjpotter/infranetes/pkg/vmserver/fake"
 )
 
 const (
 	infranetesVersion = "0.1"
 )
 
-var (
-	version = flag.Bool("version", false, "Print version and exit")
-	listen  = flag.Int("listen", 2375, "The listening port")
-	cert    = flag.String("cert", "/root/cert.pem", "Location of certificate file")
-	key     = flag.String("key", "/root/key.pem", "Location of key file")
-)
-
 func main() {
 	flag.Parse()
 
-	if *version {
+	if *flags.Version {
 		fmt.Printf("infranetes version: %s\n", infranetesVersion)
 		os.Exit(0)
 	}
 
-	server, err := vmserver.NewVMServer(cert, key)
+	contProvider, err := vmserver.NewContainerProvider(flags.ContProvider)
+	if err != nil {
+		fmt.Printf("Couldn't create image provider: %v\n", err)
+		os.Exit(1)
+	}
+
+	server, err := vmserver.NewVMServer(flags.Cert, flags.Key, contProvider)
 	if err != nil {
 		fmt.Println("Initialize infranetes vm server failed: ", err)
 		os.Exit(1)
 	}
 
-	fmt.Println(server.Serve(*listen))
+	fmt.Println(server.Serve(*flags.Listen))
 }

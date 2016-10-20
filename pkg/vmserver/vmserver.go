@@ -9,17 +9,17 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/vmserver/docker"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
 
 type VMserver struct {
-	server *grpc.Server
+	contProvider ContainerProvider
+	server       *grpc.Server
 }
 
-func NewVMServer(cert *string, key *string) (*VMserver, error) {
+func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VMserver, error) {
 	var opts []grpc.ServerOption
 	creds, err := credentials.NewServerTLSFromFile(*cert, *key)
 	if err != nil {
@@ -27,7 +27,8 @@ func NewVMServer(cert *string, key *string) (*VMserver, error) {
 	}
 	opts = []grpc.ServerOption{grpc.Creds(creds)}
 	manager := &VMserver{
-		server: grpc.NewServer(opts...),
+		contProvider: contProvider,
+		server:       grpc.NewServer(opts...),
 	}
 
 	manager.registerServer()
@@ -93,7 +94,7 @@ func (m *VMserver) ListPodSandbox(ctx context.Context, req *kubeapi.ListPodSandb
 func (m *VMserver) CreateContainer(ctx context.Context, req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	glog.Infof("CreateContainer: req = %+v", req)
 
-	resp, err := docker.CreateContainer(req)
+	resp, err := m.contProvider.CreateContainer(req)
 
 	glog.Infof("CreateContainer: resp = %+v, err = %v", resp, err)
 
@@ -103,7 +104,7 @@ func (m *VMserver) CreateContainer(ctx context.Context, req *kubeapi.CreateConta
 func (m *VMserver) StartContainer(ctx context.Context, req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
 	glog.Infof("StartContainer: req = %+v", req)
 
-	resp, err := docker.StartContainer(req)
+	resp, err := m.contProvider.StartContainer(req)
 
 	glog.Infof("StartContainer: resp = %+v, err = %v", resp, err)
 
@@ -113,7 +114,7 @@ func (m *VMserver) StartContainer(ctx context.Context, req *kubeapi.StartContain
 func (m *VMserver) StopContainer(ctx context.Context, req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
 	glog.Infof("StopContainer: req = %+v", req)
 
-	resp, err := docker.StopContainer(req)
+	resp, err := m.contProvider.StopContainer(req)
 
 	glog.Infof("StopContainer: resp = %+v, err = %v", resp, err)
 
@@ -123,7 +124,7 @@ func (m *VMserver) StopContainer(ctx context.Context, req *kubeapi.StopContainer
 func (m *VMserver) RemoveContainer(ctx context.Context, req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
 	glog.Infof("RemoveContainer: req = %+v", req)
 
-	resp, err := docker.RemoveContainer(req)
+	resp, err := m.contProvider.RemoveContainer(req)
 
 	glog.Infof("RemoveContainer: resp = %+v, err = %v", resp, err)
 
@@ -133,7 +134,7 @@ func (m *VMserver) RemoveContainer(ctx context.Context, req *kubeapi.RemoveConta
 func (m *VMserver) ListContainers(ctx context.Context, req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
 	glog.Infof("ListContainers: req = %+v", req)
 
-	resp, err := docker.ListContainers(req)
+	resp, err := m.contProvider.ListContainers(req)
 
 	glog.Infof("ListContainers: resp = %+v, err = %v", resp, nil)
 
@@ -143,7 +144,7 @@ func (m *VMserver) ListContainers(ctx context.Context, req *kubeapi.ListContaine
 func (m *VMserver) ContainerStatus(ctx context.Context, req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
 	glog.Infof("ContainerStatus: req = %+v", req)
 
-	resp, err := docker.ContainerStatus(req)
+	resp, err := m.contProvider.ContainerStatus(req)
 
 	glog.Infof("ContainerStatus: resp = %+v, err = %v", resp, err)
 
@@ -153,7 +154,7 @@ func (m *VMserver) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSt
 func (m *VMserver) Exec(stream kubeapi.RuntimeService_ExecServer) error {
 	glog.Infof("Exec: Enter")
 
-	err := docker.Exec(stream)
+	err := m.contProvider.Exec(stream)
 
 	glog.Infof("Exec: err = %v", err)
 

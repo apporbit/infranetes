@@ -18,13 +18,13 @@ import (
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockerstrslice "github.com/docker/engine-api/types/strslice"
 
+	"github.com/sjpotter/infranetes/pkg/vmserver"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-var (
-	client       *dockerclient.Client
-	globalClient = true
-)
+type dockerProvider struct {
+	client *dockerclient.Client
+}
 
 const (
 	containerNameLabel = "infra.name-label"
@@ -32,16 +32,23 @@ const (
 )
 
 func init() {
-	var err error
-	client, err = dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-
-	for err != nil {
-		glog.Infof("Failing to get a docker client")
-		client, err = dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-	}
+	vmserver.ContainerProviders.RegisterProvider("docker", NewDockerProvider)
 }
 
-func CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
+func NewDockerProvider() (vmserver.ContainerProvider, error) {
+	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
+		return nil, err
+	} else {
+		dockerProvider := &dockerProvider{
+			client: client,
+		}
+
+		return dockerProvider, nil
+	}
+
+}
+
+func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	config := req.Config
 	podSandboxID := req.GetPodSandboxId()
 
@@ -61,15 +68,7 @@ func CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContai
 	}
 
 	if image != "" {
-		lclient := client
-		if !globalClient {
-			client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-			if err != nil {
-				return nil, fmt.Errorf("Error creating new client: %v", err)
-			}
-			lclient = client
-		}
-		pullresp, err := lclient.ImagePull(context.Background(), image, dockertypes.ImagePullOptions{})
+		pullresp, err := d.client.ImagePull(context.Background(), image, dockertypes.ImagePullOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("ImagePull Failed (%v)\n", err)
 		}
@@ -111,15 +110,7 @@ func CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContai
 		UTSMode:     "host",
 	}
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	dockResp, err := lclient.ContainerCreate(context.Background(), createConfig, hostConfig, nil, "")
+	dockResp, err := d.client.ContainerCreate(context.Background(), createConfig, hostConfig, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("ContainerCreate Failed: %v", err)
 	}
@@ -133,19 +124,11 @@ func CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContai
 	return resp, nil
 }
 
-func StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
+func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
 	splits := strings.Split(req.GetContainerId(), ":")
 	contId := splits[1]
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	err := lclient.ContainerStart(context.Background(), contId)
+	err := d.client.ContainerStart(context.Background(), contId)
 	if err != nil {
 		return nil, fmt.Errorf("ContainerStart failed: %v", err)
 	}
@@ -155,45 +138,29 @@ func StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainer
 	return resp, nil
 }
 
-func StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
+func (d *dockerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
 	splits := strings.Split(req.GetContainerId(), ":")
 	contId := splits[1]
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	err := lclient.ContainerStop(context.Background(), contId, int(req.GetTimeout()))
+	err := d.client.ContainerStop(context.Background(), contId, int(req.GetTimeout()))
 
 	resp := &kubeapi.StopContainerResponse{}
 
 	return resp, err
 }
 
-func RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
+func (d *dockerProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
 	splits := strings.Split(req.GetContainerId(), ":")
 	contId := splits[1]
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	err := lclient.ContainerRemove(context.Background(), contId, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
+	err := d.client.ContainerRemove(context.Background(), contId, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
 
 	resp := &kubeapi.RemoveContainerResponse{}
 
 	return resp, err
 }
 
-func ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
+func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
 	opts := dockertypes.ContainerListOptions{All: true}
 	opts.Filter = dockerfilters.NewArgs()
 
@@ -221,15 +188,7 @@ func ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainers
 
 	result := []*kubeapi.Container{}
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	containers, err := lclient.ContainerList(context.Background(), opts)
+	containers, err := d.client.ContainerList(context.Background(), opts)
 	if err != nil {
 		glog.Infof("ListContainers: docker client returned an error: %v", err)
 		return nil, err
@@ -265,20 +224,12 @@ func ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainers
 	return resp, nil
 }
 
-func ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
+func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 	contId := splits[1]
 
-	lclient := client
-	if !globalClient {
-		client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating new client: %v", err)
-		}
-		lclient = client
-	}
-	r, err := lclient.ContainerInspect(context.Background(), contId)
+	r, err := d.client.ContainerInspect(context.Background(), contId)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +326,6 @@ func ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerSta
 	return resp, nil
 }
 
-func Exec(_ kubeapi.RuntimeService_ExecServer) error {
+func (d *dockerProvider) Exec(_ kubeapi.RuntimeService_ExecServer) error {
 	return errors.New("unimplemented")
 }
