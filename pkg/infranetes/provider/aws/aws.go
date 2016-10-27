@@ -84,10 +84,16 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		return nil, fmt.Errorf("failed to read key: %v\n", err)
 	}
 
+	ami := v.config.Ami
+	if image, ok := req.Config.Annotations["infranetes.image"]; ok {
+		glog.Infof("RunPodSandbox: overriding ami image with %v", image)
+		ami = image
+	}
+
 	awsName := req.Config.Metadata.GetNamespace() + ":" + req.Config.Metadata.GetName()
 	vm := &aws.VM{
 		Name:         awsName,
-		AMI:          v.config.Ami,
+		AMI:          ami,
 		InstanceType: "t2.micro",
 		//		InstanceType: "m4.large",
 		SSHCreds: ssh.Credentials{
