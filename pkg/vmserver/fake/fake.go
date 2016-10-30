@@ -13,62 +13,6 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type container struct {
-	id          *string
-	podId       *string
-	state       kubeapi.ContainerState
-	metadata    *kubeapi.ContainerMetadata
-	image       *kubeapi.ImageSpec
-	mounts      []*kubeapi.Mount
-	createdAt   int64
-	startedAt   int64
-	FinishedAt  int64
-	labels      map[string]string
-	annotations map[string]string
-}
-
-func (c *container) toKubeContainer() *kubeapi.Container {
-	ret := &kubeapi.Container{
-		Annotations:  c.annotations,
-		CreatedAt:    &c.createdAt,
-		Id:           c.id,
-		Image:        c.image,
-		ImageRef:     c.image.Image,
-		Labels:       c.labels,
-		Metadata:     c.metadata,
-		PodSandboxId: c.podId,
-		State:        &c.state,
-	}
-
-	return ret
-}
-
-func (c *container) toKubeStatus() *kubeapi.ContainerStatus {
-	exitCode := int32(0)
-	var reason string
-	if c.state == kubeapi.ContainerState_EXITED {
-		reason = "Completed"
-	}
-
-	ret := &kubeapi.ContainerStatus{
-		Annotations: c.annotations,
-		CreatedAt:   &c.createdAt,
-		ExitCode:    &exitCode,
-		FinishedAt:  &c.FinishedAt,
-		Id:          c.id,
-		Image:       c.image,
-		ImageRef:    c.image.Image,
-		Labels:      c.labels,
-		Metadata:    c.metadata,
-		Mounts:      c.mounts,
-		Reason:      &reason,
-		StartedAt:   &c.startedAt,
-		State:       &c.state,
-	}
-
-	return ret
-}
-
 type fakeProvider struct {
 	contMap map[string]*container
 	mapLock sync.Mutex
@@ -185,9 +129,13 @@ func filter(filter *kubeapi.ContainerFilter, cont *container) bool {
 		}
 
 		for k, v := range filter.GetLabelSelector() {
-			if cont.labels[k] != v {
-				glog.Infof("Filtering out %v as want labels[%v] = %v and got %v", *cont.id, k, v, cont.labels[k])
-				return true
+			if podVal, ok := cont.labels[k]; !ok {
+				glog.Infof("didn't find key %v in local labels: %+v", k, cont.labels)
+			} else {
+				if podVal != v {
+					glog.Infof("Filtering out %v as want labels[%v] = %v and got %v", *cont.id, k, v, podVal)
+					return true
+				}
 			}
 		}
 	}
