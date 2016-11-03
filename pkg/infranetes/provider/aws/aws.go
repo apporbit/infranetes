@@ -5,25 +5,33 @@ import (
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
+	vmserver "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/utils"
 
 	"github.com/apcera/libretto/ssh"
 	"github.com/apcera/libretto/virtualmachine/aws"
 	"github.com/golang/glog"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type podData struct {
 	vmStateLastChecked time.Time
+	id                 string
+	podIp              string
 }
 
 type awsProvider struct {
 	config *awsConfig
+	ipList *utils.Deque
 }
 
 func init() {
@@ -32,6 +40,7 @@ func init() {
 
 type awsConfig struct {
 	Ami           string
+	RouteTable    string
 	Region        string
 	SecurityGroup string
 	Vpc           string
@@ -49,17 +58,31 @@ func NewAWSProvider() (provider.PodProvider, error) {
 
 	json.Unmarshal(file, &conf)
 
+	if conf.Ami == "" || conf.RouteTable == "" || conf.Region == "" || conf.SecurityGroup == "" || conf.Vpc == "" || conf.Subnet == "" || conf.SshKey == "" {
+		msg := fmt.Sprintf("Failed to read in complete config file: conf = %+v", conf)
+		glog.Info(msg)
+		return nil, fmt.Errorf(msg)
+	}
+
 	glog.Infof("Validating AWS Credentials")
 
-	if err := aws.ValidCredentials("use-west-2"); err != nil {
+	if err := aws.ValidCredentials(conf.Region); err != nil {
 		glog.Infof("Failed to Validated AWS Credentials")
 		return nil, fmt.Errorf("failed to validate credentials: %v\n", err)
 	}
 
 	glog.Infof("Validated AWS Credentials")
 
+	ipList := utils.NewDeque()
+	for i := 1; i <= 255; i++ {
+		ipList.Append(fmt.Sprint(*flags.IPBase + "." + strconv.Itoa(i)))
+	}
+
+	InitEC2(conf.Region)
+
 	return &awsProvider{
 		config: &conf,
+		ipList: ipList,
 	}, nil
 }
 
@@ -116,25 +139,60 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
 
+	index := 1
 	ips, err := vm.GetIPs()
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
 	}
 
-	ip := ips[0].String()
+	glog.Infof("CreatePodSandbox: ips = %v", ips)
+
+	if ips[0] == nil {
+		index = 1
+	}
+
+	podIp := ips[index].String()
 
 	name := vm.InstanceID
 
-	client, err := common.CreateClient(ip)
+	client, err := common.CreateClient(podIp)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
 
-	providerData := &podData{
-		vmStateLastChecked: time.Now(),
+	podIp = v.ipList.Shift().(string)
+
+	cmdReq := &vmserver.RunCmdRequest{}
+	cmdReq.Cmd = "ifconfig"
+	cmdReq.Args = []string{"eth0:0", "", "netmask", "255.255.255.255"}
+	cmdReq.Args[1] = podIp
+
+	glog.Infof("CreatePodSandbox: cmdReq = %+v", cmdReq)
+
+	err = client.RunCmd(cmdReq)
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
 	}
 
-	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, providerData)
+	err = destSourceReset(name)
+	if err != nil {
+		awsErr := err.(awserr.Error)
+		glog.Warningf("CreatePodSandbox: destSourceReset failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	}
+
+	err = addRoute(v.config.RouteTable, name, podIp)
+	if err != nil {
+		awsErr := err.(awserr.Error)
+		glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	}
+
+	providerData := &podData{
+		vmStateLastChecked: time.Now(),
+		id:                 name,
+		podIp:              podIp,
+	}
+
+	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, providerData)
 
 	return podData, nil
 }
@@ -142,7 +200,16 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 func (v *awsProvider) StopPodSandbox(podData *common.PodData) {
 }
 
-func (v *awsProvider) RemovePodSandbox(podData *common.PodData) {
+func (v *awsProvider) RemovePodSandbox(data *common.PodData) {
+	providerData := data.ProviderData.(*podData)
+	glog.Infof("RemovePodSandbox: release IP: %v", providerData.podIp)
+	v.ipList.Append(providerData.podIp)
+
+	err := delRoute(v.config.RouteTable, providerData.podIp)
+	if err != nil {
+		awsErr := err.(awserr.Error)
+		glog.Warningf("RemovePodSandbox: delRoute failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	}
 }
 
 func (v *awsProvider) PodSandboxStatus(podData *common.PodData) {
