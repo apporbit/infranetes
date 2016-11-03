@@ -83,11 +83,28 @@ func (c *Client) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.
 	return resp, err
 }
 
-func (c *Client) StartProxy(ip *string) error {
+func (c *Client) StartProxy() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	_, err := c.vmclient.StartProxy(context.Background(), &common.IPAddress{Ip: *ip})
+	data, err := ioutil.ReadFile(*flags.Kubeconfig)
+
+	req := &common.StartProxyRequest{
+		ClusterCidr: *flags.ClusterCIDR,
+		Ip:          *flags.MasterIP,
+		Kubeconfig:  data,
+	}
+
+	_, err = c.vmclient.StartProxy(context.Background(), req)
+
+	return err
+}
+
+func (c *Client) RunCmd(req *common.RunCmdRequest) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	_, err := c.vmclient.RunCmd(context.Background(), req)
 
 	return err
 }
@@ -100,6 +117,7 @@ func (c *Client) Close() {
 }
 
 func CreateClient(ip string) (*Client, error) {
+	glog.Infof("CreateClient: ip = %v", ip)
 	var (
 		err    error
 		client *Client
@@ -111,7 +129,7 @@ func CreateClient(ip string) (*Client, error) {
 			version, err1 := client.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
 			if err1 == nil {
 				glog.Infof("CreateClient: version = %+v", version)
-				err2 := client.StartProxy(flags.MasterIP)
+				err2 := client.StartProxy()
 				if err2 != nil {
 					glog.Warningf("Couldn't start kube-proxy: %v", err2)
 				}

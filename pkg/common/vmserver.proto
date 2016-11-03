@@ -4,7 +4,8 @@ package common;
 
 service VMServer {
     //rpc UploadFiles(File) returns (UploadResponse) {}
-    rpc StartProxy(IPAddress) returns (StartProxyResponse) {}
+    rpc StartProxy(StartProxyRequest) returns (StartProxyResponse) {}
+    rpc RunCmd(RunCmdRequest) returns (RunCmdResponse) {}
 }
 
 message File {
@@ -14,8 +15,17 @@ message File {
 
 message UploadResponse {}
 
-message IPAddress {
+message StartProxyRequest {
     string ip = 1;
+    string clusterCidr = 2;
+    bytes kubeconfig = 3;
 }
 
 message StartProxyResponse {}
+
+message RunCmdRequest {
+    string cmd = 1;
+    repeated string args = 2;
+}
+
+message RunCmdResponse{}

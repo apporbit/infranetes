@@ -29,19 +29,24 @@ type BaseConfig struct {
 func main() {
 	flag.Parse()
 
+	if *flags.Version {
+		fmt.Printf("infranetes version: %s\n", infranetesVersion)
+		os.Exit(0)
+	}
+
 	if *flags.MasterIP == "" {
 		fmt.Printf("Need to specify master ip address")
 		os.Exit(1)
 	}
 
+	if *flags.IPBase == "" {
+		fmt.Println("Need to specify an IPBase")
+		os.Exit(2)
+	}
+
 	conf := BaseConfig{
 		Cloud:     *flags.PodProvider,
 		Container: *flags.ContProvider,
-	}
-
-	if *flags.Version {
-		fmt.Printf("infranetes version: %s\n", infranetesVersion)
-		os.Exit(0)
 	}
 
 	if strings.Compare("", *flags.ConfigFile) != 0 {

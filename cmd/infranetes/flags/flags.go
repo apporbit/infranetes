@@ -14,4 +14,7 @@ var (
 	ContProvider = flag.String("contprovider", "docker", "Container Provider to use")
 	CA           = flag.String("ca", "/root/ca.pem", "CA File location")
 	MasterIP     = flag.String("master-ip", "", "IP Address for Master Components")
+	ClusterCIDR  = flag.String("cluster-cidr", "", "The CIDR range of pods in the cluster. It is used to bridge traffic coming from outside of the cluster. If not provided, no off-cluster bridging will be performed.")
+	Kubeconfig   = flag.String("kubeconfig", "/var/lib/kube-proxy/kubeconfig", "Path to kubeconfig file with authorization information (the master location is set by the master flag")
+	IPBase       = flag.String("base-ip", "", "First 3 octets of the IP address")
 )

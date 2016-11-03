@@ -108,6 +108,9 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 		PidMode:     "host",
 		NetworkMode: "host",
 		UTSMode:     "host",
+		DNS:         req.SandboxConfig.DnsConfig.Servers,
+		DNSOptions:  req.SandboxConfig.DnsConfig.Options,
+		DNSSearch:   req.SandboxConfig.DnsConfig.Searches,
 	}
 
 	dockResp, err := d.client.ContainerCreate(context.Background(), createConfig, hostConfig, nil, "")
