@@ -108,8 +108,12 @@ func (d *dockerProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.
 		return nil, err
 	}
 	images := listresp.Images
-	if len(images) != 1 {
+	if len(images) > 1 {
 		return nil, fmt.Errorf("ImageStatus returned more than one image: %+v", images)
+	}
+
+	if len(images) == 0 {
+		return &kubeapi.ImageStatusResponse{}, nil
 	}
 
 	resp := &kubeapi.ImageStatusResponse{
