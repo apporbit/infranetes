@@ -12,9 +12,8 @@ import (
 	"fmt"
 	"golang.org/x/net/context"
 	"io/ioutil"
-	"time"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	"github.com/sjpotter/infranetes/pkg/common"
 )
 
 var (
@@ -46,20 +45,17 @@ func main() {
 		return
 	}
 	defer conn.Close()
-	client := kubeapi.NewRuntimeServiceClient(conn)
+	client := common.NewVMServerClient(conn)
 
-	req := &kubeapi.VersionRequest{}
+	req := &common.RunCmdRequest{}
+	req.Cmd = "ifconfig"
+	req.Args = []string{"eth0:0", "10.10.10.10", "netmask", "255.255.255.255"}
 
-	for {
-		resp, err := client.Version(context.Background(), req)
-		if err != nil {
-			fmt.Printf("Version failed: %v\n", err)
-			return
-		}
-		time.Sleep(1 * time.Second)
-		fmt.Printf("Version response = %+v\n", resp)
+	_, err = client.RunCmd(context.Background(), req)
+	if err != nil {
+		fmt.Printf("RunCmd failed: %v\n", err)
+		return
 	}
-
 }
 
 // NewClientTLSFromFile constructs a TLS from the input certificate file for client.
