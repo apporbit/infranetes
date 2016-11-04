@@ -99,3 +99,15 @@ func (d *Deque) Empty() bool {
 
 	return d.deque.Len() == 0
 }
+
+func (d *Deque) FindAndRemove(item interface{}) {
+	var next *list.Element
+
+	for e := d.deque.Front(); e != nil; e = next {
+		next = e.Next()
+
+		if e.Value == item {
+			d.deque.Remove(e)
+		}
+	}
+}
