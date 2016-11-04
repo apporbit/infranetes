@@ -8,6 +8,7 @@ import (
 	"github.com/sjpotter/infranetes/cmd/vmserver/flags"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
+	// Registered providers
 	_ "github.com/sjpotter/infranetes/pkg/vmserver/docker"
 	_ "github.com/sjpotter/infranetes/pkg/vmserver/fake"
 )

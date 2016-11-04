@@ -39,7 +39,6 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 		PodState:     kubeapi.PodSandBoxState_READY,
 		ProviderData: providerData,
 	}
-
 }
 
 /* Expect StateLock to already be taken */

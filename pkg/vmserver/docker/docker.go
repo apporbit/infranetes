@@ -10,15 +10,15 @@ import (
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
 	dockercontainer "github.com/docker/engine-api/types/container"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockerstrslice "github.com/docker/engine-api/types/strslice"
 
+	"github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
+
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
