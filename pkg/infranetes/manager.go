@@ -40,6 +40,8 @@ func NewInfranetesManager(podProvider provider.PodProvider, contProvider provide
 		vmMap:        make(map[string]*common.PodData),
 	}
 
+	manager.importSandboxes()
+
 	manager.registerServer()
 
 	return manager, nil

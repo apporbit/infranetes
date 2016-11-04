@@ -6,6 +6,10 @@ service VMServer {
     //rpc UploadFiles(File) returns (UploadResponse) {}
     rpc StartProxy(StartProxyRequest) returns (StartProxyResponse) {}
     rpc RunCmd(RunCmdRequest) returns (RunCmdResponse) {}
+    rpc SetPodIP(SetIPRequest) returns (SetIPResponse) {}
+    rpc GetPodIP(GetIPRequest) returns (GetIPResponse) {}
+    rpc SetSandboxConfig(SetSandboxConfigRequest) returns (SetSandboxConfigResponse) {}
+    rpc GetSandboxConfig(GetSandboxConfigRequest) returns (GetSandboxConfigResponse) {}
 }
 
 message File {
@@ -29,3 +33,27 @@ message RunCmdRequest {
 }
 
 message RunCmdResponse{}
+
+message SetIPRequest {
+    string ip = 1;
+}
+
+message SetIPResponse{}
+
+message GetIPRequest{}
+
+message GetIPResponse{
+    string ip = 1;
+}
+
+message SetSandboxConfigRequest {
+    bytes config = 1;
+}
+
+message SetSandboxConfigResponse{}
+
+message GetSandboxConfigRequest{}
+
+message GetSandboxConfigResponse{
+    bytes config = 1;
+}

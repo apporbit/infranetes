@@ -9,6 +9,21 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
+func (m *Manager) importSandboxes() {
+	podDatas, err := m.podProvider.ListInstances()
+
+	if err != nil {
+		return
+	}
+
+	m.vmMapLock.Lock()
+	defer m.vmMapLock.Unlock()
+
+	for _, podData := range podDatas {
+		m.vmMap[*podData.Id] = podData
+	}
+}
+
 func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.RunPodSandboxResponse, error) {
 	resp := &kubeapi.RunPodSandboxResponse{}
 
