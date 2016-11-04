@@ -14,6 +14,8 @@ type PodProvider interface {
 	RemovePodSandbox(podData *common.PodData)
 	PodSandboxStatus(podData *common.PodData)
 
+	ListInstances() ([]*common.PodData, error)
+
 	UpdatePodState(podData *common.PodData)
 }
 

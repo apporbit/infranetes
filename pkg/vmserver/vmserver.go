@@ -17,6 +17,8 @@ import (
 type VMserver struct {
 	contProvider ContainerProvider
 	server       *grpc.Server
+	podIp        *string
+	config       []byte
 }
 
 func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VMserver, error) {

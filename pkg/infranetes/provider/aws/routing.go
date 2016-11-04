@@ -82,3 +82,32 @@ func destSourceReset(instance string) error {
 
 	return err
 }
+
+func listInstances() ([]*ec2.Instance, error) {
+	filters := []*ec2.Filter{
+		{
+			Name:   aws.String("instance-state-name"),
+			Values: []*string{aws.String("running"), aws.String("pending")},
+		},
+	}
+
+	request := ec2.DescribeInstancesInput{Filters: filters}
+	result, err := client.DescribeInstances(&request)
+	if err != nil {
+		return nil, err
+	}
+
+	instances := []*ec2.Instance{}
+
+	for _, resv := range result.Reservations {
+		for _, instance := range resv.Instances {
+			for _, tag := range instance.Tags {
+				if "infranetes" == *tag.Key {
+					instances = append(instances, instance)
+				}
+			}
+		}
+	}
+
+	return instances, nil
+}

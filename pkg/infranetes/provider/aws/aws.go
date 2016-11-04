@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
-	vmserver "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 	"github.com/sjpotter/infranetes/pkg/utils"
@@ -139,6 +138,8 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
 
+	vm.SetTag("infranetes", "true")
+
 	index := 1
 	ips, err := vm.GetIPs()
 	if err != nil {
@@ -160,18 +161,31 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
 
+	err = client.StartProxy()
+	if err != nil {
+		client.Close()
+		glog.Warningf("Couldn't start kube-proxy: %v", err)
+	}
+
 	podIp = v.ipList.Shift().(string)
 
-	cmdReq := &vmserver.RunCmdRequest{}
-	cmdReq.Cmd = "ifconfig"
-	cmdReq.Args = []string{"eth0:0", "", "netmask", "255.255.255.255"}
-	cmdReq.Args[1] = podIp
+	err = client.SetPodIP(podIp)
 
-	glog.Infof("CreatePodSandbox: cmdReq = %+v", cmdReq)
+	/*	cmdReq := &vmserver.RunCmdRequest{}
+		cmdReq.Cmd = "ifconfig"
+		cmdReq.Args = []string{"eth0:0", "", "netmask", "255.255.255.255"}
+		cmdReq.Args[1] = podIp
 
-	err = client.RunCmd(cmdReq)
+		glog.Infof("CreatePodSandbox: cmdReq = %+v", cmdReq)
+
+		err = client.RunCmd(cmdReq) */
 	if err != nil {
 		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
+	}
+
+	err = client.SetSandboxConfig(req.Config)
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
 	}
 
 	err = destSourceReset(name)
@@ -213,4 +227,51 @@ func (v *awsProvider) RemovePodSandbox(data *common.PodData) {
 }
 
 func (v *awsProvider) PodSandboxStatus(podData *common.PodData) {
+}
+
+func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
+	glog.Infof("ListInstances: enter")
+	instances, err := listInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	podDatas := []*common.PodData{}
+	for _, instance := range instances {
+		podIp := *instance.PrivateIpAddress
+		client, err := common.CreateClient(podIp)
+		if err != nil {
+			return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
+		}
+
+		podIp, err = client.GetPodIP()
+		if err != nil {
+			continue
+		}
+
+		config, err := client.GetSandboxConfig()
+		if err != nil {
+			continue
+		}
+
+		name := *instance.InstanceId
+
+		vm := &aws.VM{
+			InstanceID: *instance.InstanceId,
+			Region:     v.config.Region,
+		}
+
+		providerData := &podData{
+			vmStateLastChecked: time.Now(),
+			id:                 name,
+			podIp:              podIp,
+		}
+
+		glog.Infof("ListInstances: creating a podData for %v", name)
+		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, providerData)
+
+		podDatas = append(podDatas, podData)
+	}
+
+	return podDatas, nil
 }
