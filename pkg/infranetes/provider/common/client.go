@@ -19,6 +19,7 @@ import (
 	"github.com/docker/libnetwork/Godeps/_workspace/src/golang.org/x/net/context"
 	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
+	"k8s.io/kubernetes/staging/src/k8s.io/client-go/pkg/util/json"
 	"time"
 )
 
@@ -109,6 +110,56 @@ func (c *Client) RunCmd(req *common.RunCmdRequest) error {
 	return err
 }
 
+func (c *Client) SetPodIP(ip string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip})
+
+	return err
+}
+
+func (c *Client) GetPodIP() (string, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	resp, err := c.vmclient.GetPodIP(context.Background(), &common.GetIPRequest{})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.Ip, err
+}
+
+func (c *Client) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	bytes, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.vmclient.SetSandboxConfig(context.Background(), &common.SetSandboxConfigRequest{Config: bytes})
+
+	return err
+}
+
+func (c *Client) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	resp, err := c.vmclient.GetSandboxConfig(context.Background(), &common.GetSandboxConfigRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	var config kubeapi.PodSandboxConfig
+	err = json.Unmarshal(resp.Config, &config)
+
+	return &config, err
+}
+
 func (c *Client) Close() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -129,10 +180,6 @@ func CreateClient(ip string) (*Client, error) {
 			version, err1 := client.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
 			if err1 == nil {
 				glog.Infof("CreateClient: version = %+v", version)
-				err2 := client.StartProxy()
-				if err2 != nil {
-					glog.Warningf("Couldn't start kube-proxy: %v", err2)
-				}
 
 				glog.Infof("Waiting on Docker")
 				for j := 0; j < 5; j++ {

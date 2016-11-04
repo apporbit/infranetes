@@ -89,3 +89,7 @@ func (v *vboxProvider) RemovePodSandbox(podData *common.PodData) {
 
 func (v *vboxProvider) PodSandboxStatus(podData *common.PodData) {
 }
+
+func (v *vboxProvider) ListInstances() ([]*common.PodData, error) {
+	return []*common.PodData{}, nil
+}
