@@ -267,6 +267,8 @@ func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
 			podIp:              podIp,
 		}
 
+		v.ipList.FindAndRemove(podIp)
+
 		glog.Infof("ListInstances: creating a podData for %v", name)
 		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, providerData)
 
