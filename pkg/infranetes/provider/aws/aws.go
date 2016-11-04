@@ -9,16 +9,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
+
+	"github.com/apcera/libretto/ssh"
+	"github.com/apcera/libretto/virtualmachine/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
+
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 	"github.com/sjpotter/infranetes/pkg/utils"
 
-	"github.com/apcera/libretto/ssh"
-	"github.com/apcera/libretto/virtualmachine/aws"
-	"github.com/golang/glog"
-
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 

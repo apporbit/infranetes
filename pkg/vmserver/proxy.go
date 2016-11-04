@@ -4,10 +4,10 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
 	"golang.org/x/net/context"
 
-	"github.com/golang/glog"
 	kubeproxy "k8s.io/kubernetes/cmd/kube-proxy/app"
 	"k8s.io/kubernetes/cmd/kube-proxy/app/options"
 	"k8s.io/kubernetes/pkg/apis/componentconfig"

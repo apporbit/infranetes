@@ -6,6 +6,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
 	"github.com/golang/glog"
+
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 

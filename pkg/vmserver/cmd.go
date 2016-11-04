@@ -1,11 +1,12 @@
 package vmserver
 
 import (
+	"fmt"
+	"os/exec"
+
 	"golang.org/x/net/context"
 
-	"fmt"
 	"github.com/sjpotter/infranetes/pkg/common"
-	"os/exec"
 )
 
 func (m *VMserver) RunCmd(ctx context.Context, req *common.RunCmdRequest) (*common.RunCmdResponse, error) {

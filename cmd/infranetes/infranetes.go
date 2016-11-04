@@ -12,6 +12,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 
+	//Registered Providers
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/docker"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/virtualbox"
