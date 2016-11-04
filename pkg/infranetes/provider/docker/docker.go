@@ -8,11 +8,11 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
-
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
+
+	"github.com/sjpotter/infranetes/pkg/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )

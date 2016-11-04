@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"net"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
-
 	"github.com/golang/glog"
-	"github.com/sjpotter/infranetes/pkg/common"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/sjpotter/infranetes/pkg/common"
+
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type VMserver struct {

@@ -5,22 +5,21 @@ package common
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"sync"
+	"time"
 
+	"github.com/golang/glog"
+	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
-
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
-
-	"github.com/docker/libnetwork/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
-	"k8s.io/kubernetes/staging/src/k8s.io/client-go/pkg/util/json"
-	"time"
+
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type Client struct {
