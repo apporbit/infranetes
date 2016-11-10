@@ -104,6 +104,7 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 	}
 
 	hostConfig := &dockercontainer.HostConfig{
+		Binds:       generateMountBindings(config.GetMounts()),
 		IpcMode:     "host",
 		PidMode:     "host",
 		NetworkMode: "host",
