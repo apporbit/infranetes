@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -157,6 +159,72 @@ func (c *Client) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
 	err = json.Unmarshal(resp.Config, &config)
 
 	return &config, err
+}
+
+func (c *Client) CopyFile(file string) error {
+	stat, err := os.Stat(file)
+	if err != nil {
+		return fmt.Errorf("Copyfile: Stat failed: %v", err)
+	}
+	if !stat.IsDir() {
+		glog.Infof("CopyFile: copying %v", file)
+		return c.internalCopyFile(file)
+	}
+
+	glog.Infof("CopyFile: %v is a directory, copying its contents", file)
+
+	files, err := filepath.Glob(file + "/*")
+	if err != nil {
+		return fmt.Errorf("Copyfile: Glob failed: %v", err)
+	}
+
+	for _, f := range files {
+		err := c.CopyFile(f)
+		if err != nil {
+			glog.Warningf("CopyFile: failed to copy %v: %v", f, err)
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) internalCopyFile(file string) error {
+	fileData, err := ioutil.ReadFile(file)
+	if err != nil {
+		return fmt.Errorf("internalCopyFile: ReadFile failed: %v", err)
+	}
+
+	req := &common.CopyFileRequest{
+		File:     file,
+		FileData: fileData,
+	}
+
+	_, err = c.vmclient.CopyFile(context.Background(), req)
+
+	return err
+}
+
+func (c *Client) MountFs(source string, target string, fstype string, readOnly bool) error {
+	req := &common.MountFsRequest{
+		Source:   source,
+		Target:   target,
+		Fstype:   fstype,
+		ReadOnly: readOnly,
+	}
+
+	_, err := c.vmclient.MountFs(context.Background(), req)
+
+	return err
+}
+
+func (c *Client) SetHostname(hostname string) error {
+	req := &common.SetHostnameRequest{
+		Hostname: hostname,
+	}
+
+	_, err := c.vmclient.SetHostname(context.Background(), req)
+
+	return err
 }
 
 func (c *Client) Close() {
