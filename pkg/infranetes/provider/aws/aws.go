@@ -177,14 +177,6 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 
 	err = client.SetPodIP(podIp)
 
-	/*	cmdReq := &vmserver.RunCmdRequest{}
-		cmdReq.Cmd = "ifconfig"
-		cmdReq.Args = []string{"eth0:0", "", "netmask", "255.255.255.255"}
-		cmdReq.Args[1] = podIp
-
-		glog.Infof("CreatePodSandbox: cmdReq = %+v", cmdReq)
-
-		err = client.RunCmd(cmdReq) */
 	if err != nil {
 		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
 	}
