@@ -165,7 +165,12 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 	err = client.StartProxy()
 	if err != nil {
 		client.Close()
-		glog.Warningf("Couldn't start kube-proxy: %v", err)
+		glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
+	}
+
+	err = client.SetHostname(req.Config.GetHostname())
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", req.Config.GetHostname(), err)
 	}
 
 	podIp = v.ipList.Shift().(string)

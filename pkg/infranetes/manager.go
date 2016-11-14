@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/docker/docker/pkg/mount"
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -22,6 +23,7 @@ import (
 
 var (
 	runtimeAPIVersion = "0.1.0"
+	supportedFSTypes  = map[string]bool{"nfs4": true}
 )
 
 type Manager struct {
@@ -153,11 +155,50 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
 	}
 
+	infos, err := mount.GetMounts()
+	knownMounts := make(map[string]*mount.Info)
+	if err == nil {
+		for _, info := range infos {
+			if !supportedFSTypes[info.Fstype] {
+				continue
+			}
+			knownMounts[info.Mountpoint] = info
+			glog.Info("CreateContainer: saving mount %v = %v (isreadonly = %v)", info.Mountpoint, info.Source, isReadOnly(info.Opts))
+		}
+	}
+
+	for _, mount := range req.Config.Mounts {
+		if mountInfo, ok := knownMounts[mount.GetHostPath()]; ok {
+			err = client.MountFs(mountInfo.Source, mountInfo.Mountpoint, mountInfo.Fstype, isReadOnly(mountInfo.Opts))
+			if err != nil {
+				glog.Warningf("CreateContainer: failed to mount %v on %v", mountInfo.Source, mountInfo.Mountpoint)
+			}
+		} else {
+			err = client.CopyFile(mount.GetHostPath())
+			if err != nil {
+				glog.Warningf("CreateContainer: failed to copy %v", mount.GetHostPath())
+			}
+		}
+	}
+
 	resp, err := client.CreateContainer(req)
 
 	glog.Infof("%d: CreateContainer: resp = %+v, err = %v", cookie, resp, err)
 
 	return resp, err
+}
+
+func isReadOnly(opts string) bool {
+	ret := false
+
+	splits := strings.Split(opts, ",")
+	for _, split := range splits {
+		if split == "ro" {
+			ret = true
+		}
+	}
+
+	return ret
 }
 
 func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {

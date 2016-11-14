@@ -10,6 +10,9 @@ service VMServer {
     rpc GetPodIP(GetIPRequest) returns (GetIPResponse) {}
     rpc SetSandboxConfig(SetSandboxConfigRequest) returns (SetSandboxConfigResponse) {}
     rpc GetSandboxConfig(GetSandboxConfigRequest) returns (GetSandboxConfigResponse) {}
+    rpc CopyFile(CopyFileRequest) returns (CopyFileResponse) {}
+    rpc MountFs(MountFsRequest) returns (MountFsResponse) {}
+    rpc SetHostname(SetHostnameRequest) returns (SetHostnameResponse) {}
 }
 
 message File {
@@ -57,3 +60,25 @@ message GetSandboxConfigRequest{}
 message GetSandboxConfigResponse{
     bytes config = 1;
 }
+
+message CopyFileRequest{
+    string file = 1;
+    bytes fileData = 2;
+}
+
+message CopyFileResponse{}
+
+message MountFsRequest {
+    string source = 1;
+    string target = 2;
+    string fstype = 3;
+    bool readOnly = 4;
+}
+
+message MountFsResponse{}
+
+message SetHostnameRequest {
+    string hostname = 1;
+}
+
+message SetHostnameResponse{}
