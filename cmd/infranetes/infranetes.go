@@ -15,6 +15,7 @@ import (
 	//Registered Providers
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/docker"
+	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/fake"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/virtualbox"
 )
 

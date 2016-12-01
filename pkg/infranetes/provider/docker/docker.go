@@ -2,7 +2,6 @@ package docker
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 
@@ -35,34 +34,6 @@ func NewDockerProvider() (provider.ImageProvider, error) {
 
 		return dockerProvider, nil
 	}
-}
-
-func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) Exec(sstream kubeapi.RuntimeService_ExecServer) error {
-	return errors.New("Not Implemented")
 }
 
 func (d *dockerProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {

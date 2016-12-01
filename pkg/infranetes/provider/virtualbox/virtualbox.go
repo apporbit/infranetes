@@ -69,7 +69,7 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common
 
 	ip := ips[0].String()
 
-	client, err := common.CreateClient(ip)
+	client, err := common.CreateRealClient(ip)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}

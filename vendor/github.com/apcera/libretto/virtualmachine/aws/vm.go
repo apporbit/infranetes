@@ -70,12 +70,13 @@ var (
 
 // VM represents an AWS EC2 virtual machine.
 type VM struct {
-	Name         string
-	Region       string // required
-	AMI          string
-	InstanceType string
-	InstanceID   string
-	KeyPair      string // required
+	Name                   string
+	Region                 string // required
+	AMI                    string
+	InstanceType           string
+	InstanceID             string
+	KeyPair                string // required
+	IamInstanceProfileName string
 
 	Volumes                      []EBSVolume
 	KeepRootVolumeOnDestroy      bool
