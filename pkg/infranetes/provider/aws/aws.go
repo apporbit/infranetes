@@ -113,6 +113,12 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		ami = image
 	}
 
+	role := ""
+	if iam, ok := req.Config.Annotations["infranetes.aws.iaminstancename"]; ok {
+		glog.Infof("RunPodSandbox: booting instance iam role %v", iam)
+		role = iam
+	}
+
 	awsName := req.Config.Metadata.GetNamespace() + ":" + req.Config.Metadata.GetName()
 	vm := &aws.VM{
 		Name:         awsName,
@@ -128,11 +134,12 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 				DeviceName: "/dev/sda1",
 			},
 		},
-		Region:        v.config.Region,
-		KeyPair:       strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
-		SecurityGroup: v.config.SecurityGroup,
-		VPC:           v.config.Vpc,
-		Subnet:        v.config.Subnet,
+		Region:                 v.config.Region,
+		KeyPair:                strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
+		SecurityGroup:          v.config.SecurityGroup,
+		VPC:                    v.config.Vpc,
+		Subnet:                 v.config.Subnet,
+		IamInstanceProfileName: role,
 	}
 
 	if err := vm.Provision(); err != nil {
@@ -157,7 +164,7 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 
 	name := vm.InstanceID
 
-	client, err := common.CreateClient(podIp)
+	client, err := common.CreateRealClient(podIp)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
@@ -224,8 +231,7 @@ func (v *awsProvider) RemovePodSandbox(data *common.PodData) {
 	}
 }
 
-func (v *awsProvider) PodSandboxStatus(podData *common.PodData) {
-}
+func (v *awsProvider) PodSandboxStatus(podData *common.PodData) {}
 
 func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
 	glog.Infof("ListInstances: enter")
@@ -237,7 +243,7 @@ func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
 	podDatas := []*common.PodData{}
 	for _, instance := range instances {
 		podIp := *instance.PrivateIpAddress
-		client, err := common.CreateClient(podIp)
+		client, err := common.CreateRealClient(podIp)
 		if err != nil {
 			return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 		}

@@ -11,6 +11,7 @@ import (
 	// Registered providers
 	_ "github.com/sjpotter/infranetes/pkg/vmserver/docker"
 	_ "github.com/sjpotter/infranetes/pkg/vmserver/fake"
+	_ "github.com/sjpotter/infranetes/pkg/vmserver/systemd"
 )
 
 const (

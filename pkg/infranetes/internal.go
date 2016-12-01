@@ -223,14 +223,14 @@ func (m *Manager) getPodData(id string) (*common.PodData, error) {
 	return podData, nil
 }
 
-func (m *Manager) getClient(podName string) (*common.Client, error) {
+func (m *Manager) getClient(podName string) (common.Client, error) {
 	m.vmMapLock.RLock()
 	defer m.vmMapLock.RUnlock()
 
 	return m.getClientLocked(podName)
 }
 
-func (m *Manager) getClientLocked(podName string) (*common.Client, error) {
+func (m *Manager) getClientLocked(podName string) (common.Client, error) {
 	podData, err := m.getPodData(podName)
 
 	if err != nil {

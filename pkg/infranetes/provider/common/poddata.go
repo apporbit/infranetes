@@ -19,13 +19,13 @@ type PodData struct {
 	Ip           string
 	Linux        *kubeapi.LinuxPodSandboxConfig
 	StateLock    sync.Mutex
-	Client       *Client
+	Client       Client
 	PodState     kubeapi.PodSandBoxState
 	ProviderData interface{}
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
-	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client *Client, providerData interface{}) *PodData {
+	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, providerData interface{}) *PodData {
 	return &PodData{
 		VM:           vm,
 		Id:           id,
