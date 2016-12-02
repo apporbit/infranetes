@@ -64,9 +64,13 @@ func (p *fakePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*com
 	return podData, nil
 }
 
+func (*fakePodProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest) error {
+	return nil
+}
+
 func (*fakePodProvider) UpdatePodState(cPodData *common.PodData) {}
 
-func (v *fakePodProvider) StopPodSandbox(podData *common.PodData) {}
+func (*fakePodProvider) StopPodSandbox(podData *common.PodData) {}
 
 func (v *fakePodProvider) RemovePodSandbox(data *common.PodData) {
 	// putting ip back into queue

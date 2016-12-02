@@ -32,7 +32,7 @@ func init() {
 }
 
 func NewSystemdProvider() (vmserver.ContainerProvider, error) {
-	glog.Infof("NewSystemdProvider: enter")
+	glog.Infof("SystemdProvider: starting")
 	systemdProvider := &systemdProvider{
 		contMap: make(map[string]*common.Container),
 	}

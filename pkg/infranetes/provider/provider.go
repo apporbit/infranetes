@@ -13,7 +13,7 @@ type PodProvider interface {
 	StopPodSandbox(podData *common.PodData)
 	RemovePodSandbox(podData *common.PodData)
 	PodSandboxStatus(podData *common.PodData)
-
+	PreCreateContainer(*common.PodData, *kubeapi.CreateContainerRequest) error
 	ListInstances() ([]*common.PodData, error)
 
 	UpdatePodState(podData *common.PodData)
