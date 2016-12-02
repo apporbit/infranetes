@@ -149,11 +149,17 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 
 	podId := req.GetPodSandboxId()
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: CreateContainer: failed to get client for sandbox %v", podId)
+		glog.Infof("%d: CreateContainer: failed to get podData for sandbox %v", podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
 	}
+
+	if err := m.podProvider.PreCreateContainer(podData, req); err != nil {
+		return nil, fmt.Errorf("PreCreateContainer failed: %v", err)
+	}
+
+	client := podData.Client
 
 	infos, err := mount.GetMounts()
 	knownMounts := make(map[string]*mount.Info)

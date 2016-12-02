@@ -2,6 +2,7 @@ package aws
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
@@ -27,10 +28,11 @@ type podData struct {
 	vmStateLastChecked time.Time
 	id                 string
 	podIp              string
+	booted             bool
 }
 
 type awsProvider struct {
-	config *awsConfig
+	config *common.AwsConfig
 	ipList *utils.Deque
 }
 
@@ -38,18 +40,12 @@ func init() {
 	provider.PodProviders.RegisterProvider("aws", NewAWSProvider)
 }
 
-type awsConfig struct {
-	Ami           string
-	RouteTable    string
-	Region        string
-	SecurityGroup string
-	Vpc           string
-	Subnet        string
-	SshKey        string
-}
+var (
+	Boot = true
+)
 
 func NewAWSProvider() (provider.PodProvider, error) {
-	var conf awsConfig
+	var conf common.AwsConfig
 
 	file, err := ioutil.ReadFile("aws.json")
 	if err != nil {
@@ -86,19 +82,95 @@ func NewAWSProvider() (provider.PodProvider, error) {
 	}, nil
 }
 
-func (*awsProvider) UpdatePodState(cPodData *common.PodData) {
-	podData, ok := cPodData.ProviderData.(*podData)
+func (*awsProvider) UpdatePodState(data *common.PodData) {
+	providerData, ok := data.ProviderData.(*podData)
 	if !ok {
 		glog.Warningf("UpdateVMState: Couldn't get ProviderData")
 		return
 	}
 
-	if time.Now().After(podData.vmStateLastChecked.Add(30 * time.Second)) {
-		err := cPodData.UpdatePodState()
-		if err == nil {
-			podData.vmStateLastChecked = time.Now()
+	if providerData.booted {
+		if time.Now().After(podData.vmStateLastChecked.Add(30 * time.Second)) {
+			err := data.UpdatePodState()
+			if err == nil {
+				providerData.vmStateLastChecked = time.Now()
+			}
 		}
 	}
+}
+
+func (p *awsProvider) bootSandbox(vm *aws.VM, config *kubeapi.PodSandboxConfig, podIp string) (*common.PodData, error) {
+	if err := vm.Provision(); err != nil {
+		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
+	}
+
+	vm.SetTag("infranetes", "true")
+
+	index := 1
+	ips, err := vm.GetIPs()
+	if err != nil {
+		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
+	}
+
+	glog.Infof("CreatePodSandbox: ips = %v", ips)
+
+	if ips[0] == nil {
+		index = 1
+	}
+
+	ip := ips[index].String()
+
+	name := vm.InstanceID
+
+	client, err := common.CreateRealClient(ip)
+	if err != nil {
+		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
+	}
+
+	err = client.StartProxy()
+	if err != nil {
+		client.Close()
+		glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
+	}
+
+	err = client.SetHostname(config.GetHostname())
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
+	}
+
+	err = client.SetPodIP(podIp)
+
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
+	}
+
+	err = client.SetSandboxConfig(config)
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
+	}
+
+	err = destSourceReset(name)
+	if err != nil {
+		awsErr := err.(awserr.Error)
+		glog.Warningf("CreatePodSandbox: destSourceReset failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	}
+
+	err = addRoute(p.config.RouteTable, name, podIp)
+	if err != nil {
+		awsErr := err.(awserr.Error)
+		glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	}
+
+	providerData := &podData{
+		vmStateLastChecked: time.Now(),
+		id:                 name,
+		podIp:              podIp,
+		booted:             true,
+	}
+
+	podData := common.NewPodData(vm, &podIp, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, providerData)
+
+	return podData, nil
 }
 
 func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
@@ -142,82 +214,53 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 		IamInstanceProfileName: role,
 	}
 
-	if err := vm.Provision(); err != nil {
-		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
+	podIp := v.ipList.Shift().(string)
+
+	if Boot {
+		return v.bootSandbox(vm, req.Config, podIp)
+	} else {
+		providerData := &podData{
+			podIp:  podIp,
+			booted: false,
+		}
+
+		client, _ := common.CreateFakeClient()
+
+		podData := common.NewPodData(vm, &podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, providerData)
+
+		return podData, nil
 	}
-
-	vm.SetTag("infranetes", "true")
-
-	index := 1
-	ips, err := vm.GetIPs()
-	if err != nil {
-		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
-	}
-
-	glog.Infof("CreatePodSandbox: ips = %v", ips)
-
-	if ips[0] == nil {
-		index = 1
-	}
-
-	podIp := ips[index].String()
-
-	name := vm.InstanceID
-
-	client, err := common.CreateRealClient(podIp)
-	if err != nil {
-		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
-	}
-
-	err = client.StartProxy()
-	if err != nil {
-		client.Close()
-		glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
-	}
-
-	err = client.SetHostname(req.Config.GetHostname())
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", req.Config.GetHostname(), err)
-	}
-
-	podIp = v.ipList.Shift().(string)
-
-	err = client.SetPodIP(podIp)
-
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
-	}
-
-	err = client.SetSandboxConfig(req.Config)
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
-	}
-
-	err = destSourceReset(name)
-	if err != nil {
-		awsErr := err.(awserr.Error)
-		glog.Warningf("CreatePodSandbox: destSourceReset failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
-	}
-
-	err = addRoute(v.config.RouteTable, name, podIp)
-	if err != nil {
-		awsErr := err.(awserr.Error)
-		glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
-	}
-
-	providerData := &podData{
-		vmStateLastChecked: time.Now(),
-		id:                 name,
-		podIp:              podIp,
-	}
-
-	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, providerData)
-
-	return podData, nil
 }
 
-func (v *awsProvider) StopPodSandbox(podData *common.PodData) {
+func (v *awsProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest) error {
+	// Pod Case
+	providerData := data.ProviderData.(*podData)
+	if providerData.booted {
+		return nil
+	}
+
+	// Image Case
+	vm, ok := data.VM.(*aws.VM)
+	if !ok {
+		return errors.New("PreCreateContainer: podData's VM wasn't an aws VM struct")
+	}
+
+	image := req.Config.Image.GetImage()
+	splits := strings.Split(image, ":")
+	vm.AMI = splits[0]
+
+	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip)
+	if err != nil {
+		return fmt.Errorf("PreCreateContainer: couldn't boot VM: %v", err)
+	}
+
+	data.Client = newPodData.Client
+	data.ProviderData = newPodData.ProviderData
+
+	return nil
 }
+
+func (v *awsProvider) StopPodSandbox(podData *common.PodData) {}
 
 func (v *awsProvider) RemovePodSandbox(data *common.PodData) {
 	providerData := data.ProviderData.(*podData)

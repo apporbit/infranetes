@@ -23,6 +23,7 @@ func init() {
 }
 
 func NewFakeProvider() (vmserver.ContainerProvider, error) {
+	glog.Info("NewFakeProvider: starting")
 	fakeProvider := &fakeProvider{
 		contMap: make(map[string]*common.Container),
 	}

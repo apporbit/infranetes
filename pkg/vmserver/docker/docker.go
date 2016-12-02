@@ -36,7 +36,7 @@ func init() {
 }
 
 func NewDockerProvider() (vmserver.ContainerProvider, error) {
-	glog.Infof("NewDockerProvider: enter")
+	glog.Infof("DockerProvider: startingu")
 	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
 		return nil, err
 	} else {
