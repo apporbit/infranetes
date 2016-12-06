@@ -66,12 +66,19 @@ func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
 	}
 
 	size := uint64(0)
-	splits := strings.Split(*image.ImageId, "-")
+
+	name := image.ImageId
+	for _, tag := range image.Tags {
+		if *tag.Key == "infranetes.image_name" {
+			name = tag.Value
+			break
+		}
+	}
 
 	return &kubeapi.Image{
 		Id:          image.ImageId,
-		RepoTags:    []string{"latest"},
-		RepoDigests: []string{splits[1]},
+		RepoTags:    []string{*name},
+		RepoDigests: []string{image.ImageId},
 		Size_:       &size,
 	}, nil
 }
@@ -84,8 +91,7 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 	ec2Req.Owners = []*string{awsutil.String("self")}
 
 	if req.Filter != nil && req.Filter.Image != nil {
-		splits := strings.Split(*req.Filter.Image.Image, ":")
-		ec2Req.ImageIds = []*string{&splits[0]}
+		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{req.Filter.Image.Image}}}
 	}
 
 	ec2Results, err := client.DescribeImages(ec2Req)
@@ -113,6 +119,13 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
 	glog.Info("aws ImageStatus: enter")
 	defer glog.Info("aws ImageStatus: exit")
+
+	name := *req.Image.Image
+
+	if len(strings.Split(name, ":")) == 1 {
+		name += ":latest"
+		req.Image.Image = &name
+	}
 
 	newreq := &kubeapi.ListImagesRequest{
 		Filter: &kubeapi.ImageFilter{

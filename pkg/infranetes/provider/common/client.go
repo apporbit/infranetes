@@ -6,11 +6,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -47,67 +47,45 @@ type RealClient struct {
 	kubeclient kubeapi.RuntimeServiceClient
 	vmclient   common.VMServerClient
 	conn       *grpc.ClientConn
-	lock       sync.Mutex
 }
 
 func (c *RealClient) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.CreateContainer(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.StartContainer(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.StopContainer(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.RemoveContainer(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.ListContainers(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.kubeclient.ContainerStatus(context.Background(), req)
 
 	return resp, err
 }
 
 func (c *RealClient) StartProxy() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	data, err := ioutil.ReadFile(*flags.Kubeconfig)
 
 	req := &common.StartProxyRequest{
@@ -122,27 +100,18 @@ func (c *RealClient) StartProxy() error {
 }
 
 func (c *RealClient) RunCmd(req *common.RunCmdRequest) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	_, err := c.vmclient.RunCmd(context.Background(), req)
 
 	return err
 }
 
 func (c *RealClient) SetPodIP(ip string) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip})
 
 	return err
 }
 
 func (c *RealClient) GetPodIP() (string, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.vmclient.GetPodIP(context.Background(), &common.GetIPRequest{})
 	if err != nil {
 		return "", err
@@ -152,9 +121,6 @@ func (c *RealClient) GetPodIP() (string, error) {
 }
 
 func (c *RealClient) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return err
@@ -166,9 +132,6 @@ func (c *RealClient) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
 }
 
 func (c *RealClient) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	resp, err := c.vmclient.GetSandboxConfig(context.Background(), &common.GetSandboxConfigRequest{})
 	if err != nil {
 		return nil, err
@@ -247,9 +210,6 @@ func (c *RealClient) SetHostname(hostname string) error {
 }
 
 func (c *RealClient) Close() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
 	c.conn.Close()
 }
 
@@ -323,7 +283,7 @@ func NewClientTLSFromFile(certFile, serverName string) (credentials.TransportCre
 	}
 	cp := x509.NewCertPool()
 	if !cp.AppendCertsFromPEM(b) {
-		return nil, fmt.Errorf("credentials: failed to append certificates")
+		return nil, errors.New("credentials: failed to append certificates")
 	}
 	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp, InsecureSkipVerify: true}), nil
 }

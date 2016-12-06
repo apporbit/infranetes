@@ -64,7 +64,7 @@ func (p *fakePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*com
 	return podData, nil
 }
 
-func (*fakePodProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest) error {
+func (*fakePodProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest, f func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
 	return nil
 }
 
