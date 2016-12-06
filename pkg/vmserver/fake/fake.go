@@ -3,6 +3,7 @@ package fake
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 
 	"github.com/golang/glog"
@@ -31,9 +32,44 @@ func NewFakeProvider() (vmserver.ContainerProvider, error) {
 	return fakeProvider, nil
 }
 
+func (p *fakeProvider) Lock() {
+	//	if glog.V(10) {
+	glog.Infof("fakeProvider.Lock(): pre state = %v", p.mapLock)
+	//	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		//		if glog.V(10) {
+		glog.Infof("fakeProvider.Lock() called from %s#%d\n", file, no)
+		//		}
+	}
+
+	p.mapLock.Lock()
+	//	if glog.V(10) {
+	glog.Infof("fakeProvider.Lock(): post state = %v", p.mapLock)
+	//	}
+}
+
+func (p *fakeProvider) Unlock() {
+	//	if glog.V(10) {
+	glog.Infof("fakeProvider.Unlock(): pre state = %v", p.mapLock)
+	//	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		//		if glog.V(10) {
+		glog.Infof("fakeProvider.Unlock(): called from %s#%d\n", file, no)
+		//		}
+	}
+	p.mapLock.Unlock()
+	//	if glog.V(10) {
+	glog.Infof("fakeProvider.Unlock(): post state = %v", p.mapLock)
+	//	}
+}
+
 func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
+
+	glog.Infof("CreateContainer: req.Config.Image.Image = %v", req.Config.Image.Image)
 
 	id := req.GetPodSandboxId() + ":" + req.Config.Metadata.GetName()
 	f.contMap[id] = common.NewContainer(&id,
@@ -49,8 +85,8 @@ func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*ku
 }
 
 func (f *fakeProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	id := req.GetContainerId()
 	if cont, ok := f.contMap[id]; !ok {
@@ -62,8 +98,8 @@ func (f *fakeProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kube
 }
 
 func (f *fakeProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	id := req.GetContainerId()
 	if cont, ok := f.contMap[id]; !ok {
@@ -75,8 +111,8 @@ func (f *fakeProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeap
 }
 
 func (f *fakeProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	id := req.GetContainerId()
 	if _, ok := f.contMap[id]; !ok {
@@ -88,8 +124,8 @@ func (f *fakeProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*ku
 }
 
 func (f *fakeProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	containers := []*kubeapi.Container{}
 
@@ -140,8 +176,8 @@ func filter(filter *kubeapi.ContainerFilter, cont *common.Container) bool {
 }
 
 func (f *fakeProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	f.mapLock.Lock()
-	defer f.mapLock.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	id := req.GetContainerId()
 	if cont, ok := f.contMap[id]; !ok {

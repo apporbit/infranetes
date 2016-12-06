@@ -81,7 +81,7 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common
 	return podData, nil
 }
 
-func (v *vboxProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest) error {
+func (v *vboxProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest, f func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
 	return nil
 }
 

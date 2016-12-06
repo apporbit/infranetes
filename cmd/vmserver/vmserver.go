@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/golang/glog"
+
 	"github.com/sjpotter/infranetes/cmd/vmserver/flags"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
@@ -25,6 +27,8 @@ func main() {
 		fmt.Printf("infranetes version: %s\n", infranetesVersion)
 		os.Exit(0)
 	}
+
+	glog.Infof("contprovider = %v", *flags.ContProvider)
 
 	contProvider, err := vmserver.NewContainerProvider(flags.ContProvider)
 	if err != nil {

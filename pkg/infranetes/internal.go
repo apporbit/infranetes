@@ -1,11 +1,12 @@
 package infranetes
 
 import (
+	"errors"
 	"fmt"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
-
 	"github.com/golang/glog"
+
+	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
@@ -51,13 +52,15 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 		return nil, fmt.Errorf(msg)
 	}
 
-	podData.StateLock.Lock()
-	defer podData.StateLock.Unlock()
+	podData.Lock()
+	defer podData.Unlock()
+
+	// Should turn this into a single call to the VM - i.e. StopAllContainers()
 
 	client := podData.Client
 	if client == nil { // This sandbox has been stopped
-		msg := fmt.Sprintf("stopSandbox: got nil client for %s: %v", podId, err)
-		glog.Infof(msg)
+		msg := fmt.Sprintf("stopSandbox: got nil client for %s: %v", podId)
+		glog.Warning(msg)
 		return nil, fmt.Errorf(msg)
 	}
 
@@ -65,7 +68,7 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 	if err != nil {
 		msg := fmt.Sprintf("stopSandbox: ListContainers failed for %s: %v", podId, err)
 		glog.Infof(msg)
-		return nil, fmt.Errorf(msg)
+		return nil, errors.New(msg)
 	}
 
 	for _, cont := range contResp.Containers {
@@ -94,8 +97,8 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 		return fmt.Errorf("removePodSandbox: %v", err)
 	}
 
-	podData.StateLock.Lock()
-	defer podData.StateLock.Unlock()
+	podData.Lock()
+	defer podData.Unlock()
 
 	if err := podData.VM.Destroy(); err != nil {
 		return fmt.Errorf("removePodSandbox: %v", err)
@@ -103,6 +106,9 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 
 	podData.RemovePod()
 	m.podProvider.RemovePodSandbox(podData)
+
+	m.vmMapLock.Lock()
+	defer m.vmMapLock.Unlock()
 
 	delete(m.vmMap, req.GetPodSandboxId())
 
@@ -115,8 +121,8 @@ func (m *Manager) podSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubea
 		return nil, fmt.Errorf("PodSandboxStatus: %v", err)
 	}
 
-	podData.StateLock.Lock()
-	defer podData.StateLock.Unlock()
+	podData.RLock()
+	defer podData.RUnlock()
 
 	m.podProvider.UpdatePodState(podData)
 
@@ -152,8 +158,8 @@ func (m *Manager) listPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.L
 }
 
 func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxFilter) (*kubeapi.PodSandbox, bool) {
-	podData.StateLock.Lock()
-	defer podData.StateLock.Unlock()
+	podData.RLock()
+	defer podData.RUnlock()
 
 	glog.V(1).Infof("filter: podData for %v = %+v", *podData.Id, podData)
 
@@ -167,6 +173,13 @@ func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxF
 	sandbox := podData.GetSandbox()
 
 	return sandbox, true
+}
+
+func (m *Manager) preCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest) error {
+	data.Lock()
+	defer data.Unlock()
+
+	return m.podProvider.PreCreateContainer(data, req, m.contProvider.ImageStatus)
 }
 
 func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
@@ -186,8 +199,8 @@ func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.L
 }
 
 func listSandbox(req *kubeapi.ListContainersRequest, podData *common.PodData) ([]*kubeapi.Container, bool) {
-	podData.StateLock.Lock()
-	defer podData.StateLock.Unlock()
+	podData.RLock()
+	defer podData.RUnlock()
 
 	sandboxId := ""
 	if req.Filter != nil {
