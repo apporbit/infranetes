@@ -3,7 +3,6 @@ package fake
 import (
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 
 	"github.com/golang/glog"
@@ -33,36 +32,36 @@ func NewFakeProvider() (vmserver.ContainerProvider, error) {
 }
 
 func (p *fakeProvider) Lock() {
-	//	if glog.V(10) {
-	glog.Infof("fakeProvider.Lock(): pre state = %v", p.mapLock)
-	//	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		//		if glog.V(10) {
-		glog.Infof("fakeProvider.Lock() called from %s#%d\n", file, no)
-		//		}
-	}
+	/*	if glog.V(10) {
+			glog.Infof("fakeProvider.Lock(): pre state = %v", p.mapLock)
+		}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("fakeProvider.Lock() called from %s#%d\n", file, no)
+			}
+		} */
 
 	p.mapLock.Lock()
-	//	if glog.V(10) {
-	glog.Infof("fakeProvider.Lock(): post state = %v", p.mapLock)
-	//	}
+	/*	if glog.V(10) {
+		glog.Infof("fakeProvider.Lock(): post state = %v", p.mapLock)
+	} */
 }
 
 func (p *fakeProvider) Unlock() {
-	//	if glog.V(10) {
-	glog.Infof("fakeProvider.Unlock(): pre state = %v", p.mapLock)
-	//	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		//		if glog.V(10) {
-		glog.Infof("fakeProvider.Unlock(): called from %s#%d\n", file, no)
-		//		}
-	}
+	/*	if glog.V(10) {
+			glog.Infof("fakeProvider.Unlock(): pre state = %v", p.mapLock)
+		}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("fakeProvider.Unlock(): called from %s#%d\n", file, no)
+			}
+		} */
 	p.mapLock.Unlock()
-	//	if glog.V(10) {
-	glog.Infof("fakeProvider.Unlock(): post state = %v", p.mapLock)
-	//	}
+	/*	if glog.V(10) {
+		glog.Infof("fakeProvider.Unlock(): post state = %v", p.mapLock)
+	} */
 }
 
 func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {

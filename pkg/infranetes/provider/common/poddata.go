@@ -192,10 +192,19 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 }
 
 func (p *PodData) UpdatePodState() error {
+	if p.PodState == kubeapi.PodSandBoxState_NOTREADY {
+		// "Abandon all hope, ye who enter here"  (this state). i.e. once NOTREADY, never become READY
+		return nil
+	}
+
 	vmState, err := p.VM.GetState()
 	if err == nil {
 		if vmState != lvm.VMRunning {
+			// vm is no longer healthy, close connection to vmserver and create a fake one
 			p.PodState = kubeapi.PodSandBoxState_NOTREADY
+			p.Client.Close()
+			client, _ := CreateFakeClient()
+			p.Client = client
 		}
 	}
 

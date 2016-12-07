@@ -25,7 +25,8 @@ var (
 )
 
 type awsImageProvider struct {
-	lock sync.Mutex
+	lock     sync.RWMutex
+	imageMap map[string]*kubeapi.Image
 }
 
 func init() {
@@ -57,7 +58,11 @@ func NewAWSImageProvider() (provider.ImageProvider, error) {
 
 	client = common.AwsGetClient(conf.Region)
 
-	return &awsImageProvider{}, nil
+	provider := &awsImageProvider{
+		imageMap: make(map[string]*kubeapi.Image),
+	}
+
+	return provider, nil
 }
 
 func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
@@ -78,35 +83,25 @@ func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
 	return &kubeapi.Image{
 		Id:          image.ImageId,
 		RepoTags:    []string{*name},
-		RepoDigests: []string{image.ImageId},
+		RepoDigests: []string{*image.ImageId},
 		Size_:       &size,
 	}, nil
 }
 
 func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
-	ec2Req := &ec2.DescribeImagesInput{}
-	ec2Req.Owners = []*string{awsutil.String("self")}
-
-	if req.Filter != nil && req.Filter.Image != nil {
-		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{req.Filter.Image.Image}}}
-	}
-
-	ec2Results, err := client.DescribeImages(ec2Req)
-	if err != nil {
-		return nil, fmt.Errorf("ListImages: ec2 DescribeImages failed: %v", err)
-	}
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
 	result := []*kubeapi.Image{}
-	for _, image := range ec2Results.Images {
-		apiImage, err := toRuntimeAPIImage(image)
-		if err != nil {
-			// TODO: log an error message?
-			continue
+
+	if req.Filter != nil && req.Filter.Image != nil {
+		if image, ok := p.imageMap[*req.Filter.Image.Image]; ok {
+			result = append(result, image)
 		}
-		result = append(result, apiImage)
+	} else {
+		for _, image := range p.imageMap {
+			result = append(result, image)
+		}
 	}
 
 	resp := &kubeapi.ListImagesResponse{
@@ -117,9 +112,6 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 }
 
 func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
-	glog.Info("aws ImageStatus: enter")
-	defer glog.Info("aws ImageStatus: exit")
-
 	name := *req.Image.Image
 
 	if len(strings.Split(name, ":")) == 1 {
@@ -137,25 +129,62 @@ func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeap
 	if err != nil {
 		return nil, err
 	}
-	images := listresp.Images
-	if len(images) > 1 {
-		return nil, fmt.Errorf("ImageStatus returned more than one image: %+v", images)
-	}
 
-	if len(images) == 0 {
+	switch len(listresp.Images) {
+	case 0:
 		return &kubeapi.ImageStatusResponse{}, nil
+	case 1:
+		return &kubeapi.ImageStatusResponse{Image: listresp.Images[0]}, nil
+	default:
+		return nil, fmt.Errorf("ImageStatus returned more than one image: %+v", listresp.Images)
 	}
-
-	resp := &kubeapi.ImageStatusResponse{
-		Image: images[0],
-	}
-	return resp, nil
 }
 
-func (d *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
-	return nil, errors.New("PullImage: awsImageProvider doesn't support pulling images")
+func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
+	ec2Req := &ec2.DescribeImagesInput{}
+
+	splits := strings.Split(*req.Image.Image, "/")
+	switch len(splits) {
+	case 1:
+		ec2Req.Owners = []*string{awsutil.String("self")}
+		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{&splits[0]}}}
+		break
+	case 2:
+		ec2Req.Owners = []*string{awsutil.String(splits[0])}
+		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{&splits[1]}}}
+		break
+	default:
+		return nil, fmt.Errorf("PullImage: can't parse %v", *req.Image.Image)
+	}
+
+	ec2Results, err := client.DescribeImages(ec2Req)
+	if err != nil {
+		return nil, fmt.Errorf("PullImage: ec2 DescribeImages failed: %v", err)
+	}
+
+	switch len(ec2Results.Images) {
+	case 0:
+		return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", *req.Image.Image)
+	case 1:
+		p.lock.Lock()
+		defer p.lock.Unlock()
+		image, err := toRuntimeAPIImage(ec2Results.Images[0])
+		if err != nil {
+			return nil, fmt.Errorf("PullImage: toRuntimeAPIImage failed: %v", err)
+		}
+		p.imageMap[*req.Image.Image] = image
+
+		return &kubeapi.PullImageResponse{}, nil
+	default:
+		return nil, fmt.Errorf("PullImage: ec2.DescribeImages returned more than one image: %+v", ec2Results.Images)
+	}
 }
 
-func (d *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
-	return nil, errors.New("RemoveImage: awsImageProvider doesn't removing pulling images")
+func (p *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	delete(p.imageMap, *req.Image.Image)
+
+	return &kubeapi.RemoveImageResponse{}, nil
 }
