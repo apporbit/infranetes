@@ -120,9 +120,8 @@ func (m *Manager) podSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubea
 	if err != nil {
 		return nil, fmt.Errorf("PodSandboxStatus: %v", err)
 	}
-
-	podData.RLock()
-	defer podData.RUnlock()
+	podData.Lock()
+	defer podData.Unlock()
 
 	m.podProvider.UpdatePodState(podData)
 
@@ -158,8 +157,8 @@ func (m *Manager) listPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.L
 }
 
 func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxFilter) (*kubeapi.PodSandbox, bool) {
-	podData.RLock()
-	defer podData.RUnlock()
+	podData.Lock()
+	defer podData.Unlock()
 
 	glog.V(1).Infof("filter: podData for %v = %+v", *podData.Id, podData)
 
