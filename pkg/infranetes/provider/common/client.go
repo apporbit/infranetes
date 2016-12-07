@@ -285,5 +285,5 @@ func NewClientTLSFromFile(certFile, serverName string) (credentials.TransportCre
 	if !cp.AppendCertsFromPEM(b) {
 		return nil, errors.New("credentials: failed to append certificates")
 	}
-	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp, InsecureSkipVerify: true}), nil
+	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp}), nil
 }
