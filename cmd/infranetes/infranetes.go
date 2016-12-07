@@ -14,7 +14,6 @@ import (
 
 	//Registered Providers
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws_image"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/docker"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/fake"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/virtualbox"
@@ -25,8 +24,8 @@ const (
 )
 
 type BaseConfig struct {
-	Cloud     string
-	Container string
+	Cloud string
+	Image string
 }
 
 func main() {
@@ -48,8 +47,8 @@ func main() {
 	}
 
 	conf := BaseConfig{
-		Cloud:     *flags.PodProvider,
-		Container: *flags.ContProvider,
+		Cloud: *flags.PodProvider,
+		Image: *flags.ImgProvider,
 	}
 
 	if strings.Compare("", *flags.ConfigFile) != 0 {
@@ -68,13 +67,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	contProvider, err := provider.NewImageProvider(conf.Container)
+	imgProvider, err := provider.NewImageProvider(conf.Image)
 	if err != nil {
 		fmt.Printf("Couldn't create image provider: %v\n", err)
 		os.Exit(1)
 	}
 
-	server, err := infranetes.NewInfranetesManager(podProvider, contProvider)
+	if !imgProvider.Integrate(podProvider) {
+		fmt.Printf("%v container image provider is not compatible with %v pod provider\n", conf.Image, imgProvider)
+	}
+
+	server, err := infranetes.NewInfranetesManager(podProvider, imgProvider)
 	if err != nil {
 		fmt.Println("Initialize infranetes server failed: ", err)
 		os.Exit(1)

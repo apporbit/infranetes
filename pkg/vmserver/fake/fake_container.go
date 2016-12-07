@@ -144,17 +144,17 @@ func (f *fakeProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kube
 
 func filter(filter *kubeapi.ContainerFilter, cont *common.Container) bool {
 	if filter != nil {
-		if filter.GetId() != "" && filter.GetId() == *cont.GetId() {
+		if filter.Id != nil && filter.GetId() == *cont.GetId() {
 			glog.Infof("Filtering out %v as want %v", *cont.GetId(), filter.GetId())
 			return true
 		}
 
-		if filter.GetState() == cont.GetState() {
+		if filter.State != nil && filter.GetState() != cont.GetState() {
 			glog.Infof("Filtering out %v as want %v and got %v", *cont.GetId(), filter.GetState(), cont.GetState())
 			return true
 		}
 
-		if filter.GetPodSandboxId() != "" && filter.GetPodSandboxId() != *cont.GetPodId() {
+		if filter.PodSandboxId != nil && filter.GetPodSandboxId() != *cont.GetPodId() {
 			glog.Infof("Filtering out %v as want %v and got %v", *cont.GetId(), filter.GetPodSandboxId(), *cont.GetPodId())
 			return true
 		}

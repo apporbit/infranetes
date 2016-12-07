@@ -24,11 +24,14 @@ type PodData struct {
 	stateLock    sync.RWMutex
 	Client       Client
 	PodState     kubeapi.PodSandBoxState
+	Booted       bool
+	BootLock     sync.Mutex
 	ProviderData interface{}
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
-	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, providerData interface{}) *PodData {
+	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, booted bool,
+	providerData interface{}) *PodData {
 	return &PodData{
 		VM:           vm,
 		Id:           id,
@@ -40,6 +43,7 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 		Linux:        linux,
 		Client:       client,
 		PodState:     kubeapi.PodSandBoxState_READY,
+		Booted:       booted,
 		ProviderData: providerData,
 	}
 }
@@ -138,6 +142,8 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 		},
 	}
 
+	state := p.GetPodState()
+
 	status := &kubeapi.PodSandboxStatus{
 		Id:          p.Id,
 		CreatedAt:   &p.CreatedAt,
@@ -146,7 +152,7 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 		Linux:       linux,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,
-		State:       &p.PodState,
+		State:       &state,
 	}
 
 	return status
@@ -158,11 +164,11 @@ func (p *PodData) Filter(filter *kubeapi.PodSandboxFilter) (bool, string) {
 	}
 
 	if filter != nil {
-		if filter.GetId() != "" && filter.GetId() != *p.Id {
+		if filter.Id != nil && filter.GetId() != *p.Id {
 			return true, fmt.Sprintf("doesn't match %v", filter.GetId())
 		}
 
-		if filter.GetState() != p.PodState {
+		if filter.State != nil && filter.GetState() != p.PodState {
 			return true, fmt.Sprintf("want %v and got %v", filter.GetState(), p.PodState)
 		}
 
@@ -181,32 +187,31 @@ func (p *PodData) Filter(filter *kubeapi.PodSandboxFilter) (bool, string) {
 }
 
 func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
+	state := p.GetPodState()
+
 	return &kubeapi.PodSandbox{
 		CreatedAt:   &p.CreatedAt,
 		Id:          p.Id,
 		Metadata:    p.Metadata,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,
-		State:       &p.PodState,
+		State:       &state,
 	}
 }
 
-func (p *PodData) UpdatePodState() error {
+func (p *PodData) GetPodState() kubeapi.PodSandBoxState {
 	if p.PodState == kubeapi.PodSandBoxState_NOTREADY {
-		// "Abandon all hope, ye who enter here"  (this state). i.e. once NOTREADY, never become READY
-		return nil
+		return kubeapi.PodSandBoxState_NOTREADY
 	}
 
 	vmState, err := p.VM.GetState()
-	if err == nil {
-		if vmState != lvm.VMRunning {
-			// vm is no longer healthy, close connection to vmserver and create a fake one
-			p.PodState = kubeapi.PodSandBoxState_NOTREADY
-			p.Client.Close()
-			client, _ := CreateFakeClient()
-			p.Client = client
-		}
+	if err != nil || vmState != lvm.VMRunning {
+		return kubeapi.PodSandBoxState_NOTREADY
 	}
 
-	return err
+	return kubeapi.PodSandBoxState_READY
+}
+
+func (p *PodData) UpdatePodState() {
+	p.PodState = p.GetPodState()
 }

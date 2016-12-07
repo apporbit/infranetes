@@ -126,3 +126,7 @@ func (d *dockerImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kub
 
 	return resp, err
 }
+
+func (d *dockerImageProvider) Integrate(pp provider.PodProvider) bool {
+	return true
+}

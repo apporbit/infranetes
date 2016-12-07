@@ -43,6 +43,8 @@ func NewVBoxProvider() (provider.PodProvider, error) {
 	}, nil
 }
 
+func (p *vboxProvider) SetBootAtRun(boot bool) {}
+
 func (*vboxProvider) UpdatePodState(cPodData *common.PodData) {
 	cPodData.UpdatePodState()
 }
@@ -75,8 +77,8 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common
 	}
 
 	name := vm.GetName()
-
-	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, nil)
+	booted := true
+	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, booted, nil)
 
 	return podData, nil
 }

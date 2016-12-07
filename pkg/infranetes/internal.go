@@ -120,10 +120,8 @@ func (m *Manager) podSandboxStatus(req *kubeapi.PodSandboxStatusRequest) (*kubea
 	if err != nil {
 		return nil, fmt.Errorf("PodSandboxStatus: %v", err)
 	}
-	podData.Lock()
-	defer podData.Unlock()
-
-	m.podProvider.UpdatePodState(podData)
+	podData.RLock()
+	defer podData.RUnlock()
 
 	status := podData.PodStatus()
 
@@ -157,12 +155,10 @@ func (m *Manager) listPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.L
 }
 
 func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxFilter) (*kubeapi.PodSandbox, bool) {
-	podData.Lock()
-	defer podData.Unlock()
+	podData.RLock()
+	defer podData.RUnlock()
 
 	glog.V(1).Infof("filter: podData for %v = %+v", *podData.Id, podData)
-
-	m.podProvider.UpdatePodState(podData)
 
 	if filter, msg := podData.Filter(reqFilter); filter {
 		glog.V(1).Infof("filter: filtering out %v on labels as %v", *podData.Id, msg)
@@ -175,8 +171,8 @@ func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxF
 }
 
 func (m *Manager) preCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest) error {
-	data.Lock()
-	defer data.Unlock()
+	data.RLock()
+	defer data.RUnlock()
 
 	return m.podProvider.PreCreateContainer(data, req, m.contProvider.ImageStatus)
 }
@@ -275,4 +271,10 @@ func (m *Manager) copyVMMap() map[string]*common.PodData {
 	}
 
 	return ret
+}
+
+func (m *Manager) updatePodState(data *common.PodData) {
+	if data.Booted {
+		data.UpdatePodState()
+	}
 }

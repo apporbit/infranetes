@@ -199,9 +199,7 @@ func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*ku
 		return nil, err
 	}
 
-	for i := range containers {
-		c := containers[i]
-
+	for _, c := range containers {
 		name, ok := c.Labels[containerNameLabel]
 		if !ok {
 			glog.Infof("ContainerStatus: couldn't find container name for %v", c.ID)
