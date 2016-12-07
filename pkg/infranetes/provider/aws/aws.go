@@ -83,6 +83,10 @@ func NewAWSProvider() (provider.PodProvider, error) {
 }
 
 func (*awsProvider) UpdatePodState(data *common.PodData) {
+	if data.Client == nil { // TODO: temp hack re dealing with closing clients
+		return
+	}
+
 	providerData, ok := data.ProviderData.(*podData)
 	if !ok {
 		glog.Warningf("UpdateVMState: Couldn't get ProviderData")
@@ -90,12 +94,12 @@ func (*awsProvider) UpdatePodState(data *common.PodData) {
 	}
 
 	if providerData.booted {
-		if time.Now().After(providerData.vmStateLastChecked.Add(30 * time.Second)) {
-			err := data.UpdatePodState()
-			if err == nil {
-				providerData.vmStateLastChecked = time.Now()
-			}
+		//if time.Now().After(providerData.vmStateLastChecked.Add(30 * time.Second)) {
+		err := data.UpdatePodState()
+		if err == nil {
+			providerData.vmStateLastChecked = time.Now()
 		}
+		//}
 	}
 }
 
@@ -245,18 +249,13 @@ func (v *awsProvider) PreCreateContainer(data *common.PodData, req *kubeapi.Crea
 		return errors.New("PreCreateContainer: podData's VM wasn't an aws VM struct")
 	}
 
-	var image string
-
 	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
 	if err == nil && len(result.Image.RepoTags) == 1 {
 		glog.Infof("PreCreateContainer: translated %v to %v", *req.Config.Image.Image, *result.Image.Id)
-		image = *result.Image.Id
+		vm.AMI = *result.Image.Id
 	} else {
 		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", *req.Config.Image.Image, err, result)
 	}
-
-	splits := strings.Split(image, ":")
-	vm.AMI = splits[0]
 
 	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip)
 	if err != nil {
