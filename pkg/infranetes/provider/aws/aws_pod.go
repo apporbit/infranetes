@@ -8,13 +8,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/golang/glog"
 
 	"github.com/apcera/libretto/ssh"
-	"github.com/apcera/libretto/virtualmachine/aws"
+	awsvm "github.com/apcera/libretto/virtualmachine/aws"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/service/ec2"
 
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
@@ -24,28 +25,20 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type podData struct {
-	vmStateLastChecked time.Time
-	id                 string
-	podIp              string
-	booted             bool
-}
+type podData struct{}
 
-type awsProvider struct {
-	config *common.AwsConfig
+type awsPodProvider struct {
+	config *awsConfig
 	ipList *utils.Deque
+	amiPod bool
 }
 
 func init() {
-	provider.PodProviders.RegisterProvider("aws", NewAWSProvider)
+	provider.PodProviders.RegisterProvider("aws", NewAWSPodProvider)
 }
 
-var (
-	Boot = true
-)
-
-func NewAWSProvider() (provider.PodProvider, error) {
-	var conf common.AwsConfig
+func NewAWSPodProvider() (provider.PodProvider, error) {
+	var conf awsConfig
 
 	file, err := ioutil.ReadFile("aws.json")
 	if err != nil {
@@ -62,7 +55,7 @@ func NewAWSProvider() (provider.PodProvider, error) {
 
 	glog.Infof("Validating AWS Credentials")
 
-	if err := aws.ValidCredentials(conf.Region); err != nil {
+	if err := awsvm.ValidCredentials(conf.Region); err != nil {
 		glog.Infof("Failed to Validated AWS Credentials")
 		return nil, fmt.Errorf("failed to validate credentials: %v\n", err)
 	}
@@ -74,36 +67,21 @@ func NewAWSProvider() (provider.PodProvider, error) {
 		ipList.Append(fmt.Sprint(*flags.IPBase + "." + strconv.Itoa(i)))
 	}
 
-	InitEC2(conf.Region)
+	initEC2(conf.Region)
 
-	return &awsProvider{
+	return &awsPodProvider{
 		config: &conf,
 		ipList: ipList,
 	}, nil
 }
 
-func (*awsProvider) UpdatePodState(data *common.PodData) {
-	if data.Client == nil { // TODO: temp hack re dealing with closing clients
-		return
-	}
-
-	providerData, ok := data.ProviderData.(*podData)
-	if !ok {
-		glog.Warningf("UpdateVMState: Couldn't get ProviderData")
-		return
-	}
-
-	if providerData.booted {
-		//if time.Now().After(providerData.vmStateLastChecked.Add(30 * time.Second)) {
-		err := data.UpdatePodState()
-		if err == nil {
-			providerData.vmStateLastChecked = time.Now()
-		}
-		//}
+func (*awsPodProvider) UpdatePodState(data *common.PodData) {
+	if data.Booted {
+		data.UpdatePodState()
 	}
 }
 
-func (p *awsProvider) bootSandbox(vm *aws.VM, config *kubeapi.PodSandboxConfig, podIp string) (*common.PodData, error) {
+func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, podIp string) (*common.PodData, error) {
 	if err := vm.Provision(); err != nil {
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
@@ -165,19 +143,16 @@ func (p *awsProvider) bootSandbox(vm *aws.VM, config *kubeapi.PodSandboxConfig, 
 		glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
 	}
 
-	providerData := &podData{
-		vmStateLastChecked: time.Now(),
-		id:                 name,
-		podIp:              podIp,
-		booted:             true,
-	}
+	providerData := &podData{}
 
-	podData := common.NewPodData(vm, &podIp, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, providerData)
+	booted := true
+
+	podData := common.NewPodData(vm, &podIp, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }
 
-func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
 	rawKey, err := ioutil.ReadFile(v.config.SshKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key: %v\n", err)
@@ -196,7 +171,7 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 	}
 
 	awsName := req.Config.Metadata.GetNamespace() + ":" + req.Config.Metadata.GetName()
-	vm := &aws.VM{
+	vm := &awsvm.VM{
 		Name:         awsName,
 		AMI:          ami,
 		InstanceType: "t2.micro",
@@ -205,7 +180,7 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 			SSHUser:       "ubuntu",
 			SSHPrivateKey: string(rawKey),
 		},
-		Volumes: []aws.EBSVolume{
+		Volumes: []awsvm.EBSVolume{
 			{
 				DeviceName: "/dev/sda1",
 			},
@@ -220,31 +195,43 @@ func (v *awsProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.
 
 	podIp := v.ipList.Shift().(string)
 
-	if Boot {
+	if !v.amiPod {
 		return v.bootSandbox(vm, req.Config, podIp)
 	} else {
-		providerData := &podData{
-			podIp:  podIp,
-			booted: false,
+		providerData := &podData{}
+
+		client, err := common.CreateFakeClient()
+		if err != nil { // Currently should be impossible to fail
+			return nil, fmt.Errorf("")
 		}
 
-		client, _ := common.CreateFakeClient()
+		booted := false
 
-		podData := common.NewPodData(vm, &podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, providerData)
+		podData := common.NewPodData(vm, &podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, providerData)
 
 		return podData, nil
 	}
 }
 
-func (v *awsProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
-	// Pod Case
-	providerData := data.ProviderData.(*podData)
-	if providerData.booted {
+func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
+	data.BootLock.Lock()
+	defer data.BootLock.Unlock()
+
+	// This function is really only for when amiPod == true and this pod hasn't been booted yet (i.e. only one container)
+	// The below check enforces that.  Errors out if more than one "container" is used for an amiPod and just returns if not an amiPod
+	if v.amiPod == true {
+		if data.Booted {
+			msg := "Trying to launch another container into a virtual machine"
+			glog.Infof("PreCreateContainer: %v", msg)
+			return errors.New(msg)
+		}
+	} else {
+		glog.Info("PreCreateContainer: shortcutting as not an amiPod")
 		return nil
 	}
 
 	// Image Case
-	vm, ok := data.VM.(*aws.VM)
+	vm, ok := data.VM.(*awsvm.VM)
 	if !ok {
 		return errors.New("PreCreateContainer: podData's VM wasn't an aws VM struct")
 	}
@@ -262,29 +249,60 @@ func (v *awsProvider) PreCreateContainer(data *common.PodData, req *kubeapi.Crea
 		return fmt.Errorf("PreCreateContainer: couldn't boot VM: %v", err)
 	}
 
+	data.Booted = true
+
 	data.Client = newPodData.Client
 	data.ProviderData = newPodData.ProviderData
 
 	return nil
 }
 
-func (v *awsProvider) StopPodSandbox(podData *common.PodData) {}
+func (v *awsPodProvider) StopPodSandbox(podData *common.PodData) {}
 
-func (v *awsProvider) RemovePodSandbox(data *common.PodData) {
-	providerData := data.ProviderData.(*podData)
-	glog.Infof("RemovePodSandbox: release IP: %v", providerData.podIp)
-	v.ipList.Append(providerData.podIp)
+func (v *awsPodProvider) RemovePodSandbox(data *common.PodData) {
+	glog.Infof("RemovePodSandbox: release IP: %v", data.Ip)
 
-	err := delRoute(v.config.RouteTable, providerData.podIp)
+	err := delRoute(v.config.RouteTable, data.Ip)
 	if err != nil {
 		awsErr := err.(awserr.Error)
 		glog.Warningf("RemovePodSandbox: delRoute failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	} else {
+		v.ipList.Append(data.Ip)
 	}
 }
 
-func (v *awsProvider) PodSandboxStatus(podData *common.PodData) {}
+func (v *awsPodProvider) PodSandboxStatus(podData *common.PodData) {}
 
-func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
+func listInstances() ([]*ec2.Instance, error) {
+	filters := []*ec2.Filter{
+		{
+			Name:   aws.String("instance-state-name"),
+			Values: []*string{aws.String("running"), aws.String("pending")},
+		},
+	}
+
+	request := ec2.DescribeInstancesInput{Filters: filters}
+	result, err := client.DescribeInstances(&request)
+	if err != nil {
+		return nil, err
+	}
+
+	instances := []*ec2.Instance{}
+
+	for _, resv := range result.Reservations {
+		for _, instance := range resv.Instances {
+			for _, tag := range instance.Tags {
+				if "infranetes" == *tag.Key {
+					instances = append(instances, instance)
+				}
+			}
+		}
+	}
+
+	return instances, nil
+}
+
+func (v *awsPodProvider) ListInstances() ([]*common.PodData, error) {
 	glog.Infof("ListInstances: enter")
 	instances, err := listInstances()
 	if err != nil {
@@ -309,23 +327,20 @@ func (v *awsProvider) ListInstances() ([]*common.PodData, error) {
 			continue
 		}
 
-		name := *instance.InstanceId
+		name := podIp
 
-		vm := &aws.VM{
+		vm := &awsvm.VM{
 			InstanceID: *instance.InstanceId,
 			Region:     v.config.Region,
 		}
 
-		providerData := &podData{
-			vmStateLastChecked: time.Now(),
-			id:                 name,
-			podIp:              podIp,
-		}
+		providerData := &podData{}
 
 		v.ipList.FindAndRemove(podIp)
 
 		glog.Infof("ListInstances: creating a podData for %v", name)
-		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, providerData)
+		booted := true
+		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 		podDatas = append(podDatas, podData)
 	}

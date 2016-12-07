@@ -1,4 +1,4 @@
-package aws_image
+package aws
 
 import (
 	"encoding/json"
@@ -8,20 +8,13 @@ import (
 	"strings"
 	"sync"
 
-	awsvm "github.com/apcera/libretto/virtualmachine/aws"
-	awsutil "github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
-	infraws "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
-)
-
-var (
-	client *ec2.EC2
 )
 
 type awsImageProvider struct {
@@ -34,9 +27,12 @@ func init() {
 }
 
 func NewAWSImageProvider() (provider.ImageProvider, error) {
-	infraws.Boot = false
+	var conf awsConfig
 
-	var conf common.AwsConfig
+	/* Depends on aws pod provider, so it should init the ec2 client var correctly */
+	if client == nil {
+		return nil, errors.New("ec2 client var wasn't initialized, awsPodProver should have done that")
+	}
 
 	file, err := ioutil.ReadFile("aws.json")
 	if err != nil {
@@ -50,13 +46,6 @@ func NewAWSImageProvider() (provider.ImageProvider, error) {
 		glog.Info(msg)
 		return nil, fmt.Errorf(msg)
 	}
-
-	if err := awsvm.ValidCredentials(conf.Region); err != nil {
-		glog.Infof("Failed to Validated AWS Credentials")
-		return nil, fmt.Errorf("failed to validate credentials: %v\n", err)
-	}
-
-	client = common.AwsGetClient(conf.Region)
 
 	provider := &awsImageProvider{
 		imageMap: make(map[string]*kubeapi.Image),
@@ -146,12 +135,12 @@ func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pu
 	splits := strings.Split(*req.Image.Image, "/")
 	switch len(splits) {
 	case 1:
-		ec2Req.Owners = []*string{awsutil.String("self")}
-		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{&splits[0]}}}
+		ec2Req.Owners = []*string{aws.String("self")}
+		ec2Req.Filters = []*ec2.Filter{{Name: aws.String("tag:infranetes.image_name"), Values: []*string{&splits[0]}}}
 		break
 	case 2:
-		ec2Req.Owners = []*string{awsutil.String(splits[0])}
-		ec2Req.Filters = []*ec2.Filter{{Name: awsutil.String("tag:infranetes.image_name"), Values: []*string{&splits[1]}}}
+		ec2Req.Owners = []*string{aws.String(splits[0])}
+		ec2Req.Filters = []*ec2.Filter{{Name: aws.String("tag:infranetes.image_name"), Values: []*string{&splits[1]}}}
 		break
 	default:
 		return nil, fmt.Errorf("PullImage: can't parse %v", *req.Image.Image)
@@ -187,4 +176,17 @@ func (p *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeap
 	delete(p.imageMap, *req.Image.Image)
 
 	return &kubeapi.RemoveImageResponse{}, nil
+}
+
+func (p *awsImageProvider) Integrate(pp provider.PodProvider) bool {
+	switch pp.(type) {
+	case *awsPodProvider:
+		app := pp.(*awsPodProvider)
+		//aws shouldn't boot on pod run if using container images
+		app.amiPod = true
+
+		return true
+	}
+
+	return false
 }

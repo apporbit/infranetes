@@ -15,8 +15,6 @@ type PodProvider interface {
 	PodSandboxStatus(podData *common.PodData)
 	PreCreateContainer(*common.PodData, *kubeapi.CreateContainerRequest, func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error
 	ListInstances() ([]*common.PodData, error)
-
-	UpdatePodState(podData *common.PodData)
 }
 
 type ImageProvider interface {
@@ -24,6 +22,8 @@ type ImageProvider interface {
 	ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)
 	PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error)
 	RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error)
+
+	Integrate(p PodProvider) bool
 }
 
 var (

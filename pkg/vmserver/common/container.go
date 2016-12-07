@@ -69,15 +69,15 @@ func (c *Container) GetState() kubeapi.ContainerState {
 
 func (c *Container) ToKubeContainer() *kubeapi.Container {
 	ret := &kubeapi.Container{
-		Annotations:  c.annotations,
-		CreatedAt:    &c.createdAt,
-		Id:           c.id,
-		Image:        c.image,
-		ImageRef:     c.image.Image,
-		Labels:       c.labels,
-		Metadata:     c.metadata,
-		PodSandboxId: c.podId,
-		State:        &c.state,
+		Annotations: c.annotations,
+		//CreatedAt:    &c.createdAt,
+		Id:       c.id,
+		Image:    c.image,
+		ImageRef: c.image.Image,
+		Labels:   c.labels,
+		Metadata: c.metadata,
+		//PodSandboxId: c.podId,
+		State: &c.state,
 	}
 
 	return ret
@@ -89,8 +89,7 @@ func (c *Container) ToKubeStatus() *kubeapi.ContainerStatus {
 	mounts := c.mounts
 
 	if c.state == kubeapi.ContainerState_EXITED {
-		exitCode = int32(2)
-		tmp := "Error: "
+		tmp := "Stopped"
 		reason = &tmp
 		mounts = nil
 	}

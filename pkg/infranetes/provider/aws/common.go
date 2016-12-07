@@ -1,4 +1,4 @@
-package common
+package aws
 
 import (
 	"net/http"
@@ -11,17 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
-type AwsConfig struct {
-	Ami           string
-	RouteTable    string
-	Region        string
-	SecurityGroup string
-	Vpc           string
-	Subnet        string
-	SshKey        string
-}
+var (
+	client *ec2.EC2
+)
 
-func AwsGetClient(region string) *ec2.EC2 {
+func initEC2(region string) {
 	creds := credentials.NewChainCredentials(
 		[]credentials.Provider{
 			&credentials.EnvProvider{},               // check environment
@@ -36,10 +30,21 @@ func AwsGetClient(region string) *ec2.EC2 {
 		}
 	}
 
-	return ec2.New(session.New(&aws.Config{
+	client = ec2.New(session.New(&aws.Config{
 		Credentials: creds,
 		Region:      &region,
 		CredentialsChainVerboseErrors: aws.Bool(true),
 		HTTPClient:                    &http.Client{Timeout: 30 * time.Second},
 	}))
+
+}
+
+type awsConfig struct {
+	Ami           string
+	RouteTable    string
+	Region        string
+	SecurityGroup string
+	Vpc           string
+	Subnet        string
+	SshKey        string
 }
