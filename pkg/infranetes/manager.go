@@ -149,10 +149,22 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 
 	podId := req.GetPodSandboxId()
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: CreateContainer: failed to get client for sandbox %v", podId)
+		glog.Infof("%d: CreateContainer: failed to get podData for sandbox %v", podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
+	}
+
+	if err := m.preCreateContainer(podData, req); err != nil {
+		return nil, fmt.Errorf("CreateContainer: %v", err)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	infos, err := mount.GetMounts()
@@ -181,6 +193,7 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 		}
 	}
 
+	glog.Infof("CreateContainer: Calling client.CreateContainer")
 	resp, err := client.CreateContainer(req)
 
 	glog.Infof("%d: CreateContainer: resp = %+v, err = %v", cookie, resp, err)
@@ -208,10 +221,18 @@ func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContaine
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: StartContainer: failed to get client for sandbox %v", cookie, podId)
-		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
+		glog.Infof("%d: StartContainer: failed to get podData for sandbox %v", cookie, podId)
+		return nil, fmt.Errorf("Failed to get podData for sandbox %v: %v", podId, err)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.StartContainer(req)
@@ -228,10 +249,18 @@ func (m *Manager) StopContainer(ctx context.Context, req *kubeapi.StopContainerR
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: StopContainer: failed to get client for sandbox %v", cookie, podId)
-		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
+		glog.Infof("%d: StopContainer: failed to get podData for sandbox %v", cookie, podId)
+		return nil, fmt.Errorf("Failed to get podData for sandbox %v: %v", podId, err)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.StopContainer(req)
@@ -248,10 +277,18 @@ func (m *Manager) RemoveContainer(ctx context.Context, req *kubeapi.RemoveContai
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: RemoveContainer: failed to get client for sandbox %v", cookie, podId)
-		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
+		glog.Infof("%d: RemoveContainer: failed to get podData for sandbox %v", cookie, podId)
+		return nil, fmt.Errorf("Failed to get podData for sandbox %v: %v", podId, err)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.RemoveContainer(req)
@@ -279,10 +316,18 @@ func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSta
 	splits := strings.Split(req.GetContainerId(), ":")
 	podId := splits[0]
 
-	client, err := m.getClient(podId)
+	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: ContainerStatus: failed to get client for sandbox %v", cookie, podId)
-		return nil, fmt.Errorf("failed to get client for sandbox %v", podId)
+		glog.Infof("%d: ContainerStatus: failed to get podData for sandbox %v", cookie, podId)
+		return nil, fmt.Errorf("failed to get podData for sandbox %v", podId)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.ContainerStatus(req)

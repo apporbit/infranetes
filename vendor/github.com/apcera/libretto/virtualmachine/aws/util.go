@@ -164,6 +164,13 @@ func instanceInfo(vm *VM) *ec2.RunInstancesInput {
 		vm.InstanceType = defaultInstanceType
 	}
 
+	var iamInstance *ec2.IamInstanceProfileSpecification
+	if vm.IamInstanceProfileName != "" {
+		iamInstance = &ec2.IamInstanceProfileSpecification{
+			Name: aws.String(vm.IamInstanceProfileName),
+		}
+	}
+
 	var sid *string
 	if vm.Subnet != "" {
 		sid = aws.String(vm.Subnet)
@@ -204,8 +211,9 @@ func instanceInfo(vm *VM) *ec2.RunInstancesInput {
 		Monitoring: &ec2.RunInstancesMonitoringEnabled{
 			Enabled: aws.Bool(true),
 		},
-		SubnetId:         sid,
-		SecurityGroupIds: sgid,
+		SubnetId:           sid,
+		SecurityGroupIds:   sgid,
+		IamInstanceProfile: iamInstance,
 	}
 }
 

@@ -69,7 +69,7 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common
 
 	ip := ips[0].String()
 
-	client, err := common.CreateClient(ip)
+	client, err := common.CreateRealClient(ip)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
@@ -79,6 +79,10 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common
 	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, nil)
 
 	return podData, nil
+}
+
+func (v *vboxProvider) PreCreateContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest, f func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
+	return nil
 }
 
 func (v *vboxProvider) StopPodSandbox(podData *common.PodData) {

@@ -2,7 +2,6 @@ package docker
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 
@@ -17,55 +16,27 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type dockerProvider struct {
+type dockerImageProvider struct {
 	client *dockerclient.Client
 }
 
 func init() {
-	provider.ImageProviders.RegisterProvider("docker", NewDockerProvider)
+	provider.ImageProviders.RegisterProvider("docker", NewDockerImageProvider)
 }
 
-func NewDockerProvider() (provider.ImageProvider, error) {
+func NewDockerImageProvider() (provider.ImageProvider, error) {
 	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
 		return nil, err
 	} else {
-		dockerProvider := &dockerProvider{
+		dockerImageProvider := &dockerImageProvider{
 			client: client,
 		}
 
-		return dockerProvider, nil
+		return dockerImageProvider, nil
 	}
 }
 
-func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	return nil, errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) Exec(sstream kubeapi.RuntimeService_ExecServer) error {
-	return errors.New("Not Implemented")
-}
-
-func (d *dockerProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
+func (d *dockerImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
 	opts := dockertypes.ImageListOptions{}
 
 	filter := req.Filter
@@ -97,7 +68,7 @@ func (d *dockerProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.Li
 	return resp, nil
 }
 
-func (d *dockerProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
+func (d *dockerImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
 	newreq := &kubeapi.ListImagesRequest{
 		Filter: &kubeapi.ImageFilter{
 			Image: req.Image,
@@ -122,7 +93,7 @@ func (d *dockerProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.
 	return resp, nil
 }
 
-func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
+func (d *dockerImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
 	pullresp, err := d.client.ImagePull(context.Background(), req.Image.GetImage(), dockertypes.ImagePullOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("ImagePull Failed (%v)\n", err)
@@ -148,7 +119,7 @@ func (d *dockerProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pull
 	return resp, err
 }
 
-func (d *dockerProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
+func (d *dockerImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
 	_, err := d.client.ImageRemove(context.Background(), req.Image.GetImage(), dockertypes.ImageRemoveOptions{PruneChildren: true})
 
 	resp := &kubeapi.RemoveImageResponse{}

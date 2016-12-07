@@ -14,7 +14,9 @@ import (
 
 	//Registered Providers
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
+	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws_image"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/docker"
+	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/fake"
 	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/virtualbox"
 )
 
@@ -36,7 +38,7 @@ func main() {
 	}
 
 	if *flags.MasterIP == "" {
-		fmt.Printf("Need to specify master ip address")
+		fmt.Println("Need to specify master ip address")
 		os.Exit(1)
 	}
 

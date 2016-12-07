@@ -2,10 +2,13 @@ package common
 
 import (
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
 	lvm "github.com/apcera/libretto/virtualmachine"
+	"github.com/golang/glog"
+
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -18,14 +21,14 @@ type PodData struct {
 	CreatedAt    int64
 	Ip           string
 	Linux        *kubeapi.LinuxPodSandboxConfig
-	StateLock    sync.Mutex
-	Client       *Client
+	stateLock    sync.RWMutex
+	Client       Client
 	PodState     kubeapi.PodSandBoxState
 	ProviderData interface{}
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
-	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client *Client, providerData interface{}) *PodData {
+	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, providerData interface{}) *PodData {
 	return &PodData{
 		VM:           vm,
 		Id:           id,
@@ -38,6 +41,73 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 		Client:       client,
 		PodState:     kubeapi.PodSandBoxState_READY,
 		ProviderData: providerData,
+	}
+}
+
+func (p *PodData) Lock() {
+	if glog.V(10) {
+		glog.Infof("podData.Lock(): pre state = %v", p.stateLock)
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		if glog.V(10) {
+			glog.Infof("podData.Lock() called from %s#%d\n", file, no)
+		}
+	}
+
+	p.stateLock.Lock()
+	if glog.V(10) {
+		glog.Infof("podData.Lock(): post state = %v", p.stateLock)
+	}
+}
+
+func (p *PodData) Unlock() {
+	if glog.V(10) {
+		glog.Infof("podData.Unlock(): pre state = %v", p.stateLock)
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		if glog.V(10) {
+			glog.Infof("podData.Unlock(): called from %s#%d\n", file, no)
+		}
+	}
+	p.stateLock.Unlock()
+	if glog.V(10) {
+		glog.Infof("podData.Unlock(): post state = %v", p.stateLock)
+	}
+}
+
+func (p *PodData) RLock() {
+	if glog.V(10) {
+		glog.Infof("podData.RLock(): pre state = %v", p.stateLock)
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		if glog.V(10) {
+			glog.Infof("podData.RLock() called from %s#%d\n", file, no)
+		}
+	}
+
+	p.stateLock.RLock()
+	if glog.V(10) {
+		glog.Infof("podData.RLock(): post state = %v", p.stateLock)
+	}
+}
+
+func (p *PodData) RUnlock() {
+	if glog.V(10) {
+		glog.Infof("podData.RUnlock(): pre state = %v", p.stateLock)
+	}
+	_, file, no, ok := runtime.Caller(1)
+	if ok {
+		if glog.V(10) {
+			glog.Infof("podData.RUnlock() called from %s#%d\n", file, no)
+		}
+	}
+
+	p.stateLock.RUnlock()
+	if glog.V(10) {
+		glog.Infof("podData.RUnlock(): post state = %v", p.stateLock)
 	}
 }
 
@@ -122,10 +192,19 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 }
 
 func (p *PodData) UpdatePodState() error {
+	if p.PodState == kubeapi.PodSandBoxState_NOTREADY {
+		// "Abandon all hope, ye who enter here"  (this state). i.e. once NOTREADY, never become READY
+		return nil
+	}
+
 	vmState, err := p.VM.GetState()
 	if err == nil {
 		if vmState != lvm.VMRunning {
+			// vm is no longer healthy, close connection to vmserver and create a fake one
 			p.PodState = kubeapi.PodSandBoxState_NOTREADY
+			p.Client.Close()
+			client, _ := CreateFakeClient()
+			p.Client = client
 		}
 	}
 

@@ -6,11 +6,11 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -24,71 +24,68 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type Client struct {
+type Client interface {
+	CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error)
+	StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error)
+	StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error)
+	RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error)
+	ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error)
+	ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error)
+	StartProxy() error
+	RunCmd(req *common.RunCmdRequest) error
+	SetPodIP(ip string) error
+	GetPodIP() (string, error)
+	SetSandboxConfig(config *kubeapi.PodSandboxConfig) error
+	GetSandboxConfig() (*kubeapi.PodSandboxConfig, error)
+	CopyFile(file string) error
+	MountFs(source string, target string, fstype string, readOnly bool) error
+	SetHostname(hostname string) error
+	Close()
+}
+
+type RealClient struct {
 	kubeclient kubeapi.RuntimeServiceClient
 	vmclient   common.VMServerClient
 	conn       *grpc.ClientConn
-	lock       sync.Mutex
 }
 
-func (c *Client) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	resp, err := c.kubeclient.CreateContainer(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
 	resp, err := c.kubeclient.StartContainer(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
 	resp, err := c.kubeclient.StopContainer(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
 	resp, err := c.kubeclient.RemoveContainer(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
 	resp, err := c.kubeclient.ListContainers(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
 	resp, err := c.kubeclient.ContainerStatus(context.Background(), req)
 
 	return resp, err
 }
 
-func (c *Client) StartProxy() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) StartProxy() error {
 	data, err := ioutil.ReadFile(*flags.Kubeconfig)
 
 	req := &common.StartProxyRequest{
@@ -102,28 +99,19 @@ func (c *Client) StartProxy() error {
 	return err
 }
 
-func (c *Client) RunCmd(req *common.RunCmdRequest) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) RunCmd(req *common.RunCmdRequest) error {
 	_, err := c.vmclient.RunCmd(context.Background(), req)
 
 	return err
 }
 
-func (c *Client) SetPodIP(ip string) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) SetPodIP(ip string) error {
 	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip})
 
 	return err
 }
 
-func (c *Client) GetPodIP() (string, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) GetPodIP() (string, error) {
 	resp, err := c.vmclient.GetPodIP(context.Background(), &common.GetIPRequest{})
 	if err != nil {
 		return "", err
@@ -132,10 +120,7 @@ func (c *Client) GetPodIP() (string, error) {
 	return resp.Ip, err
 }
 
-func (c *Client) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
 	bytes, err := json.Marshal(config)
 	if err != nil {
 		return err
@@ -146,10 +131,7 @@ func (c *Client) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
 	return err
 }
 
-func (c *Client) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
 	resp, err := c.vmclient.GetSandboxConfig(context.Background(), &common.GetSandboxConfigRequest{})
 	if err != nil {
 		return nil, err
@@ -161,7 +143,7 @@ func (c *Client) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
 	return &config, err
 }
 
-func (c *Client) CopyFile(file string) error {
+func (c *RealClient) CopyFile(file string) error {
 	stat, err := os.Stat(file)
 	if err != nil {
 		return fmt.Errorf("Copyfile: Stat failed: %v", err)
@@ -188,7 +170,7 @@ func (c *Client) CopyFile(file string) error {
 	return nil
 }
 
-func (c *Client) internalCopyFile(file string) error {
+func (c *RealClient) internalCopyFile(file string) error {
 	fileData, err := ioutil.ReadFile(file)
 	if err != nil {
 		return fmt.Errorf("internalCopyFile: ReadFile failed: %v", err)
@@ -204,7 +186,7 @@ func (c *Client) internalCopyFile(file string) error {
 	return err
 }
 
-func (c *Client) MountFs(source string, target string, fstype string, readOnly bool) error {
+func (c *RealClient) MountFs(source string, target string, fstype string, readOnly bool) error {
 	req := &common.MountFsRequest{
 		Source:   source,
 		Target:   target,
@@ -217,7 +199,7 @@ func (c *Client) MountFs(source string, target string, fstype string, readOnly b
 	return err
 }
 
-func (c *Client) SetHostname(hostname string) error {
+func (c *RealClient) SetHostname(hostname string) error {
 	req := &common.SetHostnameRequest{
 		Hostname: hostname,
 	}
@@ -227,18 +209,15 @@ func (c *Client) SetHostname(hostname string) error {
 	return err
 }
 
-func (c *Client) Close() {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
+func (c *RealClient) Close() {
 	c.conn.Close()
 }
 
-func CreateClient(ip string) (*Client, error) {
+func CreateRealClient(ip string) (Client, error) {
 	glog.Infof("CreateClient: ip = %v", ip)
 	var (
 		err    error
-		client *Client
+		client *RealClient
 	)
 
 	for i := 0; i < 10; i++ {
@@ -273,7 +252,7 @@ func CreateClient(ip string) (*Client, error) {
 	return nil, err
 }
 
-func internalCreateClient(ip string) (*Client, error) {
+func internalCreateClient(ip string) (*RealClient, error) {
 	var opts []grpc.DialOption
 	var creds credentials.TransportCredentials
 	var sn = "127.0.0.1"
@@ -293,7 +272,7 @@ func internalCreateClient(ip string) (*Client, error) {
 	kubeclient := kubeapi.NewRuntimeServiceClient(conn)
 	vmclient := common.NewVMServerClient(conn)
 
-	return &Client{kubeclient: kubeclient, vmclient: vmclient, conn: conn}, nil
+	return &RealClient{kubeclient: kubeclient, vmclient: vmclient, conn: conn}, nil
 }
 
 // NewClientTLSFromFile constructs a TLS from the input certificate file for client.
@@ -304,7 +283,7 @@ func NewClientTLSFromFile(certFile, serverName string) (credentials.TransportCre
 	}
 	cp := x509.NewCertPool()
 	if !cp.AppendCertsFromPEM(b) {
-		return nil, fmt.Errorf("credentials: failed to append certificates")
+		return nil, errors.New("credentials: failed to append certificates")
 	}
 	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp, InsecureSkipVerify: true}), nil
 }
