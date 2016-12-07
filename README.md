@@ -32,7 +32,8 @@ $ go build ./cmd/vmserver/vmserver.go
 1. Create a CA public/private key pair
 
 ```bash
-$ openssl genrsa -aes256 -out ca.pem 4096
+$ openssl genrsa -aes256 -out ca-key.pem 4096
+$ openssl req -new -x509 -days 365 -key ca-key.pem -sha256 -out ca.pem
 ```
 
 2. Create a server key pair 
@@ -43,20 +44,19 @@ $ openssl genrsa -out key.pem 4096
 
 3. Create a certificate signing request for it
 ```bash
-$ openssl req -subj "/CN=127.0.0.1" -sha256 -new -key key.pem -out server.csr
+$ openssl req -subj "/CN=*" -sha256 -new -key key.pem -out server.csr
 ```
 
 4. Sign it with the CA key created above
 
 ```bash
-$ echo subjectAltName = DNS:127.0.0.1,IP:127.0.0.1 > extfile.cnf
+$ echo subjectAltName = IP:127.0.0.1 > extfile.cnf
 
-$ openssl x509 -req -days 365 -sha256 -in server.csr -CA ca.pem -CAkey ca.pem -CAcreateserial -out cert.pem -extfile extfile.cnf
+$ openssl x509 -req -days 365 -sha256 -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out cert.pem -extfile extfile.cnf
 ```
-
 this will result in 3 files we care about for infranetes usage `ca.pem`, `key.pem`, and `cert.pem`
 
-In the current version of Infranetes we use the InsecureSkipVerify setting of TLS and simply rely on the fact that the key was signed by the CA key we have access to
+* Note the above IP in the subjectAltName isn't the IP of the VM instance, however, all that TLS cares is that `infranetes` thinks it should be 127.0.0.1 and vmserver claims it is 127.0.0.1 and the certificate chain verifies to the CA 
 
 ### 3. Creating the base image
 

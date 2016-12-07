@@ -13,7 +13,8 @@ import (
 	"golang.org/x/net/context"
 	"io/ioutil"
 
-	"github.com/sjpotter/infranetes/pkg/common"
+	//	"github.com/sjpotter/infranetes/pkg/common"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 var (
@@ -45,13 +46,10 @@ func main() {
 		return
 	}
 	defer conn.Close()
-	client := common.NewVMServerClient(conn)
+	//	vmclient := common.NewVMServerClient(conn)
+	client := kubeapi.NewRuntimeServiceClient(conn)
 
-	req := &common.RunCmdRequest{}
-	req.Cmd = "ifconfig"
-	req.Args = []string{"eth0:0", "10.10.10.10", "netmask", "255.255.255.255"}
-
-	_, err = client.RunCmd(context.Background(), req)
+	_, err = client.Version(context.Background(), &kubeapi.VersionRequest{})
 	if err != nil {
 		fmt.Printf("RunCmd failed: %v\n", err)
 		return
@@ -68,5 +66,5 @@ func NewClientTLSFromFile(certFile, serverName string) (credentials.TransportCre
 	if !cp.AppendCertsFromPEM(b) {
 		return nil, fmt.Errorf("credentials: failed to append certificates")
 	}
-	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp, InsecureSkipVerify: true}), nil
+	return credentials.NewTLS(&tls.Config{ServerName: serverName, RootCAs: cp}), nil
 }
