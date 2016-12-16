@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"github.com/docker/libnetwork/Godeps/_workspace/src/golang.org/x/net/context"
-	"github.com/sjpotter/infranetes/cmd/tests/bulk/api"
-	"google.golang.org/grpc"
 	"io/ioutil"
 	"os"
+
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
+	"github.com/sjpotter/infranetes/cmd/tests/bulk/api"
 )
 
 func main() {

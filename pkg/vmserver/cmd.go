@@ -37,6 +37,11 @@ func (m *VMserver) SetPodIP(ctx context.Context, req *common.SetIPRequest) (*com
 		m.podIp = &req.Ip
 	}
 
+	err = m.startStreamingServer()
+	if err != nil {
+		glog.Warning("SetPodIP: couldn't start streaming server for exec/attach")
+	}
+
 	return &common.SetIPResponse{}, err
 }
 

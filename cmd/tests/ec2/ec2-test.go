@@ -17,6 +17,36 @@ var (
 func main() {
 	flag.Parse()
 
+	rawKey, err := ioutil.ReadFile(*key)
+	if err != nil {
+		return
+	}
+
+	vm := &aws.VM{
+		Name:         "libretto-aws",
+		AMI:          "ami-4a55fe2a",
+		InstanceType: "t2.micro",
+		SSHCreds: ssh.Credentials{
+			SSHUser:       "ubuntu",
+			SSHPrivateKey: string(rawKey),
+		},
+		Volumes: []aws.EBSVolume{
+			{
+				DeviceName: "/dev/sda1",
+			},
+		},
+		Region:        "us-west-2",
+		KeyPair:       strings.TrimSuffix(filepath.Base(*key), filepath.Ext(*key)),
+		SecurityGroup: "sg-abeee7d2",
+		Subnet:        "subnet-4c51463a",
+	}
+
+	err = vm.Provision()
+	if err != nil {
+		fmt.Printf("Failed to provision: %v\n", err)
+		return
+	}
+
 	state, err := vm.GetState()
 	if err != nil {
 		fmt.Printf("Failed to get vm state: %v\n", err)

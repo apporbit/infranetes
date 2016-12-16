@@ -13,6 +13,15 @@ service VMServer {
     rpc CopyFile(CopyFileRequest) returns (CopyFileResponse) {}
     rpc MountFs(MountFsRequest) returns (MountFsResponse) {}
     rpc SetHostname(SetHostnameRequest) returns (SetHostnameResponse) {}
+    rpc Logs(LogsRequest) returns (stream LogLine) {}
+}
+
+message LogsRequest {
+    string containerID = 1;
+}
+
+message LogLine {
+    string logLine = 1;
 }
 
 message File {

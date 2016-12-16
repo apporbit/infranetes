@@ -8,18 +8,21 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/coreos/go-systemd/unit"
 	"github.com/golang/glog"
 
+	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 	"github.com/sjpotter/infranetes/pkg/vmserver/common"
 
+	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
+
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
-	"path/filepath"
-	"syscall"
 )
 
 type systemdProvider struct {
@@ -133,7 +136,7 @@ func (p *systemdProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (
 	id := req.GetPodSandboxId() + ":" + name
 	p.contMap[id] = common.NewContainer(&id,
 		req.PodSandboxId,
-		kubeapi.ContainerState_CREATED,
+		kubeapi.ContainerState_CONTAINER_CREATED,
 		req.Config.Metadata,
 		req.Config.Image,
 		req.Config.Mounts,
@@ -147,8 +150,10 @@ func (p *systemdProvider) StartContainer(req *kubeapi.StartContainerRequest) (*k
 	p.mapLock.Lock()
 	defer p.mapLock.Unlock()
 
-	splits := strings.Split(req.GetContainerId(), ":")
-	name := splits[1]
+	_, name, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("StartContainer: err = %v", err)
+	}
 
 	id := req.GetContainerId()
 	if cont, ok := p.contMap[id]; !ok {
@@ -268,6 +273,20 @@ func (p *systemdProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (
 	}
 }
 
-func (p *systemdProvider) Exec(_ kubeapi.RuntimeService_ExecServer) error {
-	return errors.New("unimplemented")
+func (f *systemdProvider) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
+	var code int32
+	code = 0
+	ret := &kubeapi.ExecSyncResponse{
+		ExitCode: &code,
+	}
+
+	return ret, nil
+}
+
+func (f *systemdProvider) GetStreamingRuntime() streaming.Runtime {
+	return nil
+}
+
+func (d *systemdProvider) Logs(req *icommon.LogsRequest, stream icommon.VMServer_LogsServer) error {
+	return fmt.Errorf("Logging not currently support in systemd mode yet")
 }

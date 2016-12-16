@@ -1,37 +1,22 @@
 package fake
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/pkg/vmserver"
 	"github.com/sjpotter/infranetes/pkg/vmserver/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type fakeProvider struct {
+type fakeContainerProvider struct {
 	contMap map[string]*common.Container
 	mapLock sync.Mutex
 }
 
-func init() {
-	vmserver.ContainerProviders.RegisterProvider("fake", NewFakeProvider)
-}
-
-func NewFakeProvider() (vmserver.ContainerProvider, error) {
-	glog.Info("NewFakeProvider: starting")
-	fakeProvider := &fakeProvider{
-		contMap: make(map[string]*common.Container),
-	}
-
-	return fakeProvider, nil
-}
-
-func (p *fakeProvider) Lock() {
+func (p *fakeContainerProvider) Lock() {
 	/*	if glog.V(10) {
 			glog.Infof("fakeProvider.Lock(): pre state = %v", p.mapLock)
 		}
@@ -48,7 +33,7 @@ func (p *fakeProvider) Lock() {
 	} */
 }
 
-func (p *fakeProvider) Unlock() {
+func (p *fakeContainerProvider) Unlock() {
 	/*	if glog.V(10) {
 			glog.Infof("fakeProvider.Unlock(): pre state = %v", p.mapLock)
 		}
@@ -64,7 +49,7 @@ func (p *fakeProvider) Unlock() {
 	} */
 }
 
-func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
+func (f *fakeContainerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -73,7 +58,7 @@ func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*ku
 	id := req.GetPodSandboxId() + ":" + req.Config.Metadata.GetName()
 	f.contMap[id] = common.NewContainer(&id,
 		req.PodSandboxId,
-		kubeapi.ContainerState_CREATED,
+		kubeapi.ContainerState_CONTAINER_CREATED,
 		req.Config.Metadata,
 		req.Config.Image,
 		req.Config.Mounts,
@@ -83,7 +68,7 @@ func (f *fakeProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*ku
 	return &kubeapi.CreateContainerResponse{ContainerId: &id}, nil
 }
 
-func (f *fakeProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
+func (f *fakeContainerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -96,7 +81,7 @@ func (f *fakeProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kube
 	}
 }
 
-func (f *fakeProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
+func (f *fakeContainerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -109,7 +94,7 @@ func (f *fakeProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeap
 	}
 }
 
-func (f *fakeProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
+func (f *fakeContainerProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -122,7 +107,7 @@ func (f *fakeProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*ku
 	}
 }
 
-func (f *fakeProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
+func (f *fakeContainerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -174,7 +159,7 @@ func filter(filter *kubeapi.ContainerFilter, cont *common.Container) bool {
 	return false
 }
 
-func (f *fakeProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
+func (f *fakeContainerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
 	f.Lock()
 	defer f.Unlock()
 
@@ -188,8 +173,4 @@ func (f *fakeProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*ku
 
 		return resp, nil
 	}
-}
-
-func (f *fakeProvider) Exec(_ kubeapi.RuntimeService_ExecServer) error {
-	return errors.New("unimplemented")
 }

@@ -1,20 +1,21 @@
 package infranetes
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
 
-	"github.com/docker/docker/pkg/mount"
 	"github.com/golang/glog"
+	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
@@ -144,59 +145,23 @@ func (m *Manager) ListPodSandbox(ctx context.Context, req *kubeapi.ListPodSandbo
 }
 
 func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
-	cookie := rand.Int()
-	glog.Infof("%d: CreateContainer: req = %+v", cookie, req)
+	glog.Infof("CreateContainer: req = %+v", req)
 
 	podId := req.GetPodSandboxId()
 
 	podData, err := m.getPodData(podId)
 	if err != nil {
-		glog.Infof("%d: CreateContainer: failed to get podData for sandbox %v", podId)
+		glog.Infof("createContainer: failed to get podData for sandbox %v", podId)
 		return nil, fmt.Errorf("Failed to get client for sandbox %v: %v", podId, err)
 	}
 
-	if err := m.preCreateContainer(podData, req); err != nil {
-		return nil, fmt.Errorf("CreateContainer: %v", err)
-	}
+	logpath := filepath.Join(req.GetSandboxConfig().GetLogDirectory(), req.GetConfig().GetLogPath())
 
-	podData.RLock()
-	defer podData.RUnlock()
+	resp, err := m.createContainer(podData, req)
 
-	client := podData.Client
-	if client == nil {
-		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
-	}
+	podData.AddContLogPath(resp.GetContainerId(), logpath)
 
-	infos, err := mount.GetMounts()
-	knownMounts := make(map[string]*mount.Info)
-	if err == nil {
-		for _, info := range infos {
-			if !supportedFSTypes[info.Fstype] {
-				continue
-			}
-			knownMounts[info.Mountpoint] = info
-			glog.Info("CreateContainer: saving mount %v = %v (isreadonly = %v)", info.Mountpoint, info.Source, isReadOnly(info.Opts))
-		}
-	}
-
-	for _, mount := range req.Config.Mounts {
-		if mountInfo, ok := knownMounts[mount.GetHostPath()]; ok {
-			err = client.MountFs(mountInfo.Source, mountInfo.Mountpoint, mountInfo.Fstype, isReadOnly(mountInfo.Opts))
-			if err != nil {
-				glog.Warningf("CreateContainer: failed to mount %v on %v", mountInfo.Source, mountInfo.Mountpoint)
-			}
-		} else {
-			err = client.CopyFile(mount.GetHostPath())
-			if err != nil {
-				glog.Warningf("CreateContainer: failed to copy %v", mount.GetHostPath())
-			}
-		}
-	}
-
-	glog.Infof("CreateContainer: Calling client.CreateContainer")
-	resp, err := client.CreateContainer(req)
-
-	glog.Infof("%d: CreateContainer: resp = %+v, err = %v", cookie, resp, err)
+	glog.Infof("CreateContainer: resp = %+v, err = %v", resp, err)
 
 	return resp, err
 }
@@ -218,8 +183,10 @@ func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContaine
 	cookie := rand.Int()
 	glog.Infof("%d: StartContainer: req = %+v", cookie, req)
 
-	splits := strings.Split(req.GetContainerId(), ":")
-	podId := splits[0]
+	podId, contId, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("StartContainer: failed: %v", err)
+	}
 
 	podData, err := m.getPodData(podId)
 	if err != nil {
@@ -236,6 +203,17 @@ func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContaine
 	}
 
 	resp, err := client.StartContainer(req)
+	if err == nil { // start worked, start logging
+		go func() {
+			path, ok := podData.GetContLogPath(req.GetContainerId())
+			if !ok {
+				glog.Infof("StartContainer: Can't log, couldn't find path for %v", req.GetContainerId())
+				return
+			}
+
+			client.SaveLogs(contId, path)
+		}()
+	}
 
 	glog.Infof("%d: StartContainer: resp = %+v, err = %v", cookie, resp, err)
 
@@ -246,8 +224,10 @@ func (m *Manager) StopContainer(ctx context.Context, req *kubeapi.StopContainerR
 	cookie := rand.Int()
 	glog.Infof("%d: StopContainer: req = %+v", cookie, req)
 
-	splits := strings.Split(req.GetContainerId(), ":")
-	podId := splits[0]
+	podId, _, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("StopContainer: failed: %v", err)
+	}
 
 	podData, err := m.getPodData(podId)
 	if err != nil {
@@ -274,8 +254,10 @@ func (m *Manager) RemoveContainer(ctx context.Context, req *kubeapi.RemoveContai
 	cookie := rand.Int()
 	glog.Infof("%d: RemoveContainer: req = %+v", cookie, req)
 
-	splits := strings.Split(req.GetContainerId(), ":")
-	podId := splits[0]
+	podId, _, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("RemoveContainer: failed: %v", err)
+	}
 
 	podData, err := m.getPodData(podId)
 	if err != nil {
@@ -313,8 +295,10 @@ func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSta
 	cookie := rand.Int()
 	glog.Infof("%d: ContainerStatus: req = %+v", cookie, req)
 
-	splits := strings.Split(req.GetContainerId(), ":")
-	podId := splits[0]
+	podId, _, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("ContainerStatus: failed: %v", err)
+	}
 
 	podData, err := m.getPodData(podId)
 	if err != nil {
@@ -337,14 +321,144 @@ func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSta
 	return resp, err
 }
 
-func (m *Manager) Exec(stream kubeapi.RuntimeService_ExecServer) error {
-	glog.Infof("Exec: Enter")
+func (m *Manager) ExecSync(ctx context.Context, req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
+	cookie := rand.Int()
+	glog.Infof("%d: ExecSync: req = %+v", cookie, req)
 
-	err := errors.New("Unimplemented")
+	splits := strings.Split(req.GetContainerId(), ":")
+	podId := splits[0]
 
-	glog.Infof("Exec: err = %v", err)
+	podData, err := m.getPodData(podId)
+	if err != nil {
+		glog.Infof("%d: ExecSync: failed to get podData for sandbox %v", cookie, podId)
+		return nil, fmt.Errorf("failed to get podData for sandbox %v", podId)
+	}
 
-	return err
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("ExecSync: nil client, must be a removed pod sandbox?")
+	}
+
+	resp, err := client.ExecSync(req)
+
+	glog.Infof("%d: ExecSync: resp = %+v, err = %v", cookie, resp, err)
+
+	return resp, err
+}
+
+func (m *Manager) Exec(ctx context.Context, req *kubeapi.ExecRequest) (*kubeapi.ExecResponse, error) {
+	glog.Infof("Exec: req = %+v", req)
+
+	podId, _, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("Exec: failed: %v", err)
+	}
+
+	podData, err := m.getPodData(podId)
+	if err != nil {
+		glog.Infof("Exec: failed to get podData for sandbox %v", podId)
+		return nil, fmt.Errorf("failed to get podData for sandbox %v", podId)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("Exec: nil client, must be a removed pod sandbox?")
+	}
+
+	resp, err := client.Exec(req)
+
+	glog.Infof("Exec: resp = %+v, err = %v", resp, err)
+
+	return resp, err
+}
+
+func (m *Manager) Attach(ctx context.Context, req *kubeapi.AttachRequest) (*kubeapi.AttachResponse, error) {
+	glog.Infof("Attach: req = %+v", req)
+
+	podId, _, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("Attach: failed: %v", err)
+	}
+
+	podData, err := m.getPodData(podId)
+	if err != nil {
+		glog.Infof("Attach: failed to get podData for sandbox %v", podId)
+		return nil, fmt.Errorf("failed to get podData for sandbox %v", podId)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("Attach: nil client, must be a removed pod sandbox?")
+	}
+
+	resp, err := client.Attach(req)
+
+	glog.Infof("Attach: resp = %+v, err = %v", resp, err)
+
+	return resp, err
+}
+
+func (m *Manager) PortForward(ctx context.Context, req *kubeapi.PortForwardRequest) (*kubeapi.PortForwardResponse, error) {
+	glog.Infof("PortForward: req = %+v", req)
+
+	podId := req.GetPodSandboxId()
+
+	podData, err := m.getPodData(podId)
+	if err != nil {
+		glog.Infof("PortForward: failed to get podData for sandbox %v", podId)
+		return nil, fmt.Errorf("failed to get podData for sandbox %v", podId)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("PortForward: nil client, must be a removed pod sandbox?")
+	}
+
+	resp, err := client.PortForward(req)
+
+	glog.Infof("Attach: resp = %+v, err = %v", resp, err)
+
+	return resp, err
+
+}
+
+// TODO: Currently only handles PodCIDR and unsure how that impacts infranetes?  Seems machine specific, but we ignore the machine CIDR
+func (m *Manager) UpdateRuntimeConfig(ctx context.Context, req *kubeapi.UpdateRuntimeConfigRequest) (*kubeapi.UpdateRuntimeConfigResponse, error) {
+	glog.Infof("UpdateRuntimeConfig: req = %+v", req)
+
+	resp := &kubeapi.UpdateRuntimeConfigResponse{}
+
+	glog.Infof("UpdateRuntimeConfig: resp = %+v, err = %v", resp, nil)
+
+	return resp, nil
+}
+
+func (m *Manager) Status(ctx context.Context, req *kubeapi.StatusRequest) (*kubeapi.StatusResponse, error) {
+	runtimeReady := &kubeapi.RuntimeCondition{
+		Type:   proto.String(kubeapi.RuntimeReady),
+		Status: proto.Bool(true),
+	}
+	networkReady := &kubeapi.RuntimeCondition{
+		Type:   proto.String(kubeapi.NetworkReady),
+		Status: proto.Bool(true),
+	}
+	conditions := []*kubeapi.RuntimeCondition{runtimeReady, networkReady}
+	status := &kubeapi.RuntimeStatus{Conditions: conditions}
+
+	return &kubeapi.StatusResponse{Status: status}, nil
+
 }
 
 func (m *Manager) ListImages(ctx context.Context, req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {

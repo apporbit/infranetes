@@ -1,8 +1,9 @@
 package common
 
 import (
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 	"time"
+
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type Container struct {
@@ -43,12 +44,12 @@ func NewContainer(id *string,
 
 func (c *Container) Start() {
 	c.startedAt = time.Now().Unix()
-	c.state = kubeapi.ContainerState_RUNNING
+	c.state = kubeapi.ContainerState_CONTAINER_RUNNING
 }
 
 func (c *Container) Finished() {
 	c.finishedAt = time.Now().Unix()
-	c.state = kubeapi.ContainerState_EXITED
+	c.state = kubeapi.ContainerState_CONTAINER_EXITED
 }
 
 func (c *Container) GetId() *string {
@@ -88,7 +89,7 @@ func (c *Container) ToKubeStatus() *kubeapi.ContainerStatus {
 	var reason *string
 	mounts := c.mounts
 
-	if c.state == kubeapi.ContainerState_EXITED {
+	if c.state == kubeapi.ContainerState_CONTAINER_EXITED {
 		tmp := "Stopped"
 		reason = &tmp
 		mounts = nil
