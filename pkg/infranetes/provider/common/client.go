@@ -21,6 +21,7 @@ import (
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/common"
 
+	"io"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -31,6 +32,11 @@ type Client interface {
 	RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error)
 	ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error)
 	ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error)
+	ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error)
+	Exec(req *kubeapi.ExecRequest) (*kubeapi.ExecResponse, error)
+	Attach(req *kubeapi.AttachRequest) (*kubeapi.AttachResponse, error)
+	PortForward(req *kubeapi.PortForwardRequest) (*kubeapi.PortForwardResponse, error)
+
 	StartProxy() error
 	RunCmd(req *common.RunCmdRequest) error
 	SetPodIP(ip string) error
@@ -41,6 +47,8 @@ type Client interface {
 	MountFs(source string, target string, fstype string, readOnly bool) error
 	SetHostname(hostname string) error
 	Close()
+	Version() (*kubeapi.VersionResponse, error)
+	SaveLogs(container string, path string) error
 }
 
 type RealClient struct {
@@ -83,6 +91,37 @@ func (c *RealClient) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kube
 	resp, err := c.kubeclient.ContainerStatus(context.Background(), req)
 
 	return resp, err
+}
+
+func (c *RealClient) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
+	resp, err := c.kubeclient.ExecSync(context.Background(), req)
+
+	return resp, err
+}
+
+func (c *RealClient) Exec(req *kubeapi.ExecRequest) (*kubeapi.ExecResponse, error) {
+	resp, err := c.kubeclient.Exec(context.Background(), req)
+
+	return resp, err
+}
+
+func (c *RealClient) Attach(req *kubeapi.AttachRequest) (*kubeapi.AttachResponse, error) {
+	resp, err := c.kubeclient.Attach(context.Background(), req)
+
+	return resp, err
+}
+
+func (c *RealClient) PortForward(req *kubeapi.PortForwardRequest) (*kubeapi.PortForwardResponse, error) {
+	resp, err := c.kubeclient.PortForward(context.Background(), req)
+
+	return resp, err
+}
+
+func (c *RealClient) Version() (*kubeapi.VersionResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return c.kubeclient.Version(ctx, &kubeapi.VersionRequest{})
 }
 
 func (c *RealClient) StartProxy() error {
@@ -209,6 +248,37 @@ func (c *RealClient) SetHostname(hostname string) error {
 	return err
 }
 
+func (c *RealClient) SaveLogs(container string, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		msg := fmt.Sprintf("SaveLogs: failed to create path %v: %v", path, err)
+		glog.Warningf(msg)
+		return errors.New(msg)
+	}
+
+	stream, err := c.vmclient.Logs(context.Background(), &common.LogsRequest{ContainerID: container})
+	if err != nil {
+		return fmt.Errorf("SaveLogs: failed: %v", err)
+	}
+
+	for {
+		line, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			msg := fmt.Sprintf("SaveLogs: streaming failed: %v", err)
+			glog.Warningf(msg)
+			return fmt.Errorf(msg)
+		}
+
+		f.WriteString(line.LogLine)
+		f.WriteString("\n")
+	}
+
+	return nil
+}
+
 func (c *RealClient) Close() {
 	c.conn.Close()
 }
@@ -223,7 +293,7 @@ func CreateRealClient(ip string) (Client, error) {
 	for i := 0; i < 10; i++ {
 		client, err = internalCreateClient(ip)
 		if err == nil {
-			version, err1 := client.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
+			version, err1 := client.Version()
 			if err1 == nil {
 				glog.Infof("CreateClient: version = %+v", version)
 

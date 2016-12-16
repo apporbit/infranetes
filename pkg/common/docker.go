@@ -40,13 +40,13 @@ func MakeLabels(labels, annotations map[string]string) map[string]string {
 
 func ToDockerContainerStatus(state kubeapi.ContainerState) string {
 	switch state {
-	case kubeapi.ContainerState_CREATED:
+	case kubeapi.ContainerState_CONTAINER_CREATED:
 		return "created"
-	case kubeapi.ContainerState_RUNNING:
+	case kubeapi.ContainerState_CONTAINER_RUNNING:
 		return "running"
-	case kubeapi.ContainerState_EXITED:
+	case kubeapi.ContainerState_CONTAINER_EXITED:
 		return "exited"
-	case kubeapi.ContainerState_UNKNOWN:
+	case kubeapi.ContainerState_CONTAINER_UNKNOWN:
 		fallthrough
 	default:
 		return "unknown"
@@ -65,13 +65,13 @@ func ToRuntimeAPIContainerState(state string) kubeapi.ContainerState {
 	// we upgrade docker.
 	switch {
 	case strings.HasPrefix(state, statusRunningPrefix):
-		return kubeapi.ContainerState_RUNNING
+		return kubeapi.ContainerState_CONTAINER_RUNNING
 	case strings.HasPrefix(state, statusExitedPrefix):
-		return kubeapi.ContainerState_EXITED
+		return kubeapi.ContainerState_CONTAINER_EXITED
 	case strings.HasPrefix(state, statusCreatedPrefix):
-		return kubeapi.ContainerState_CREATED
+		return kubeapi.ContainerState_CONTAINER_CREATED
 	default:
-		return kubeapi.ContainerState_UNKNOWN
+		return kubeapi.ContainerState_CONTAINER_UNKNOWN
 	}
 }
 

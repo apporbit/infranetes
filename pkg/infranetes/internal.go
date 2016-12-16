@@ -6,6 +6,8 @@ import (
 
 	"github.com/golang/glog"
 
+	"github.com/docker/docker/pkg/mount"
+
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
@@ -175,6 +177,48 @@ func (m *Manager) preCreateContainer(data *common.PodData, req *kubeapi.CreateCo
 	defer data.RUnlock()
 
 	return m.podProvider.PreCreateContainer(data, req, m.contProvider.ImageStatus)
+}
+
+func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
+	if err := m.preCreateContainer(podData, req); err != nil {
+		return nil, fmt.Errorf("CreateContainer: %v", err)
+	}
+
+	podData.RLock()
+	defer podData.RUnlock()
+
+	client := podData.Client
+	if client == nil {
+		return nil, fmt.Errorf("createContainer: nil client, must be a removed pod sandbox?")
+	}
+
+	infos, err := mount.GetMounts()
+	knownMounts := make(map[string]*mount.Info)
+	if err == nil {
+		for _, info := range infos {
+			if !supportedFSTypes[info.Fstype] {
+				continue
+			}
+			knownMounts[info.Mountpoint] = info
+			glog.Info("CreateContainer: saving mount %v = %v (isreadonly = %v)", info.Mountpoint, info.Source, isReadOnly(info.Opts))
+		}
+	}
+
+	for _, mount := range req.Config.Mounts {
+		if mountInfo, ok := knownMounts[mount.GetHostPath()]; ok {
+			err = client.MountFs(mountInfo.Source, mountInfo.Mountpoint, mountInfo.Fstype, isReadOnly(mountInfo.Opts))
+			if err != nil {
+				glog.Warningf("CreateContainer: failed to mount %v on %v", mountInfo.Source, mountInfo.Mountpoint)
+			}
+		} else {
+			err = client.CopyFile(mount.GetHostPath())
+			if err != nil {
+				glog.Warningf("CreateContainer: failed to copy %v", mount.GetHostPath())
+			}
+		}
+	}
+
+	return client.CreateContainer(req)
 }
 
 func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {

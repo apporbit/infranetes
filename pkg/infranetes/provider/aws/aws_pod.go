@@ -188,7 +188,6 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 		Region:                 v.config.Region,
 		KeyPair:                strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
 		SecurityGroup:          v.config.SecurityGroup,
-		VPC:                    v.config.Vpc,
 		Subnet:                 v.config.Subnet,
 		IamInstanceProfileName: role,
 	}

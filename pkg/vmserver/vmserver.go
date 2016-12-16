@@ -10,16 +10,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
+
 	"github.com/sjpotter/infranetes/pkg/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type VMserver struct {
-	contProvider ContainerProvider
-	server       *grpc.Server
-	podIp        *string
-	config       []byte
+	contProvider    ContainerProvider
+	server          *grpc.Server
+	podIp           *string
+	config          []byte
+	streamingServer streaming.Server
 }
 
 func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VMserver, error) {
@@ -135,11 +138,11 @@ func (m *VMserver) RemoveContainer(ctx context.Context, req *kubeapi.RemoveConta
 }
 
 func (m *VMserver) ListContainers(ctx context.Context, req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {
-	glog.Infof("ListContainers: req = %+v", req)
+	glog.V(10).Infof("ListContainers: req = %+v", req)
 
 	resp, err := m.contProvider.ListContainers(req)
 
-	glog.Infof("ListContainers: resp = %+v, err = %v", resp, nil)
+	glog.V(10).Infof("ListContainers: resp = %+v, err = %v", resp, nil)
 
 	return resp, err
 }
@@ -154,12 +157,30 @@ func (m *VMserver) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSt
 	return resp, err
 }
 
-func (m *VMserver) Exec(stream kubeapi.RuntimeService_ExecServer) error {
-	glog.Infof("Exec: Enter")
+func (m *VMserver) ExecSync(ctx context.Context, req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
+	glog.Infof("ExecSync: req = %+v", req)
 
-	err := m.contProvider.Exec(stream)
+	resp, err := m.contProvider.ExecSync(req)
 
-	glog.Infof("Exec: err = %v", err)
+	glog.Infof("ExecSync: resp = %+v, err = %v", resp, err)
+
+	return resp, err
+}
+
+func (m *VMserver) UpdateRuntimeConfig(ctx context.Context, req *kubeapi.UpdateRuntimeConfigRequest) (*kubeapi.UpdateRuntimeConfigResponse, error) {
+	return nil, errors.New("UpdateRuntimeConfig is currently unsupported")
+}
+
+func (m *VMserver) Status(ctx context.Context, req *kubeapi.StatusRequest) (*kubeapi.StatusResponse, error) {
+	return nil, errors.New("Status: is currently unsupported")
+}
+
+func (m *VMserver) Logs(req *common.LogsRequest, stream common.VMServer_LogsServer) error {
+	glog.Infof("Logs: req = %+v", req)
+
+	err := m.contProvider.Logs(req, stream)
+
+	glog.Infof("Logs: err = %v", err)
 
 	return err
 }

@@ -4,6 +4,10 @@ import (
 	"fmt"
 
 	"github.com/golang/glog"
+
+	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
+
+	"github.com/sjpotter/infranetes/pkg/common"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -14,7 +18,9 @@ type ContainerProvider interface {
 	RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error)
 	ListContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error)
 	ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error)
-	Exec(stream kubeapi.RuntimeService_ExecServer) error
+	ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error)
+	GetStreamingRuntime() streaming.Runtime
+	Logs(req *common.LogsRequest, stream common.VMServer_LogsServer) error
 }
 
 var (

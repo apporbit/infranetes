@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+
+	"golang.org/x/net/context"
+
 	dockerclient "github.com/docker/engine-api/client"
-	"github.com/docker/libnetwork/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 func main() {

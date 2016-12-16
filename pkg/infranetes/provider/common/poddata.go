@@ -23,10 +23,11 @@ type PodData struct {
 	Linux        *kubeapi.LinuxPodSandboxConfig
 	stateLock    sync.RWMutex
 	Client       Client
-	PodState     kubeapi.PodSandBoxState
+	PodState     kubeapi.PodSandboxState
 	Booted       bool
 	BootLock     sync.Mutex
 	ProviderData interface{}
+	ContLogs     map[string]string
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
@@ -42,9 +43,10 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 		Ip:           ip,
 		Linux:        linux,
 		Client:       client,
-		PodState:     kubeapi.PodSandBoxState_READY,
+		PodState:     kubeapi.PodSandboxState_SANDBOX_READY,
 		Booted:       booted,
 		ProviderData: providerData,
+		ContLogs:     make(map[string]string),
 	}
 }
 
@@ -117,7 +119,7 @@ func (p *PodData) RUnlock() {
 
 /* Expect StateLock to already be taken */
 func (p *PodData) StopPod() error {
-	p.PodState = kubeapi.PodSandBoxState_NOTREADY
+	p.PodState = kubeapi.PodSandboxState_SANDBOX_NOTREADY
 
 	return nil
 }
@@ -135,10 +137,11 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 	}
 
 	net := "host"
+
 	linux := &kubeapi.LinuxPodSandboxStatus{
 		Namespaces: &kubeapi.Namespace{
 			Network: &net,
-			Options: p.Linux.NamespaceOptions,
+			Options: p.Linux.SecurityContext.NamespaceOptions,
 		},
 	}
 
@@ -199,19 +202,41 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 	}
 }
 
-func (p *PodData) GetPodState() kubeapi.PodSandBoxState {
-	if p.PodState == kubeapi.PodSandBoxState_NOTREADY {
-		return kubeapi.PodSandBoxState_NOTREADY
+func (p *PodData) GetPodState() kubeapi.PodSandboxState {
+	if !p.Booted {
+		return kubeapi.PodSandboxState_SANDBOX_READY
 	}
 
-	vmState, err := p.VM.GetState()
-	if err != nil || vmState != lvm.VMRunning {
-		return kubeapi.PodSandBoxState_NOTREADY
+	//i.e. booted, but not ready, means its a goner
+	if p.PodState == kubeapi.PodSandboxState_SANDBOX_NOTREADY {
+		return kubeapi.PodSandboxState_SANDBOX_NOTREADY
 	}
 
-	return kubeapi.PodSandBoxState_READY
+	_, err := p.Client.Version()
+	if err != nil {
+		glog.Infof("GetPodState: pod %v Version failed: err = %v", *p.Id, err)
+		return kubeapi.PodSandboxState_SANDBOX_NOTREADY
+	}
+
+	return kubeapi.PodSandboxState_SANDBOX_READY
 }
 
 func (p *PodData) UpdatePodState() {
 	p.PodState = p.GetPodState()
+}
+
+func (p *PodData) AddContLogPath(cont string, path string) {
+	p.Lock()
+	defer p.Unlock()
+
+	p.ContLogs[cont] = path
+}
+
+func (p *PodData) GetContLogPath(cont string) (string, bool) {
+	p.RLock()
+	defer p.RUnlock()
+
+	ret, ok := p.ContLogs[cont]
+
+	return ret, ok
 }

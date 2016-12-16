@@ -33,8 +33,8 @@ func initEC2(region string) {
 	client = ec2.New(session.New(&aws.Config{
 		Credentials: creds,
 		Region:      &region,
-		CredentialsChainVerboseErrors: aws.Bool(true),
-		HTTPClient:                    &http.Client{Timeout: 30 * time.Second},
+		//CredentialsChainVerboseErrors: aws.Bool(true),
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
 	}))
 
 }

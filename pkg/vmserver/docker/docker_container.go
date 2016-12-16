@@ -2,10 +2,10 @@ package docker
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
@@ -15,20 +15,27 @@ import (
 	dockercontainer "github.com/docker/engine-api/types/container"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockerstrslice "github.com/docker/engine-api/types/strslice"
+	"github.com/hpcloud/tail"
+	"k8s.io/kubernetes/pkg/kubelet/dockertools"
 
 	"github.com/sjpotter/infranetes/pkg/common"
+	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type dockerProvider struct {
-	client *dockerclient.Client
+	client           *dockerclient.Client
+	streamingRuntime *streamingRuntime
+	tailMap          map[string]*tail.Tail
+	lock             sync.Mutex
 }
 
 const (
 	containerNameLabel = "infra.name-label"
 	podSandboxIDLabel  = "infra.sandbox-label"
+	defaultTimeout     = 2 * time.Minute
 )
 
 func init() {
@@ -40,13 +47,18 @@ func NewDockerProvider() (vmserver.ContainerProvider, error) {
 	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
 		return nil, err
 	} else {
-		dockerProvider := &dockerProvider{
-			client: client,
+		d := &dockerProvider{
+			client:  client,
+			tailMap: make(map[string]*tail.Tail),
+			streamingRuntime: &streamingRuntime{
+				client:      dockertools.KubeWrapDockerclient(client),
+				execHandler: &dockertools.NativeExecHandler{},
+				//execHandler: &dockertools.NsenterExecHandler{},
+			},
 		}
 
-		return dockerProvider, nil
+		return d, nil
 	}
-
 }
 
 func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
@@ -130,10 +142,12 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 }
 
 func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
-	splits := strings.Split(req.GetContainerId(), ":")
-	contId := splits[1]
+	_, contId, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("StartContainer: err = %v", err)
+	}
 
-	err := d.client.ContainerStart(context.Background(), contId)
+	err = d.client.ContainerStart(context.Background(), contId)
 	if err != nil {
 		return nil, fmt.Errorf("ContainerStart failed: %v", err)
 	}
@@ -144,10 +158,12 @@ func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*ku
 }
 
 func (d *dockerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kubeapi.StopContainerResponse, error) {
-	splits := strings.Split(req.GetContainerId(), ":")
-	contId := splits[1]
+	_, contId, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("StopContainer: err = %v", err)
+	}
 
-	err := d.client.ContainerStop(context.Background(), contId, int(req.GetTimeout()))
+	err = d.client.ContainerStop(context.Background(), contId, int(req.GetTimeout()))
 
 	resp := &kubeapi.StopContainerResponse{}
 
@@ -155,10 +171,17 @@ func (d *dockerProvider) StopContainer(req *kubeapi.StopContainerRequest) (*kube
 }
 
 func (d *dockerProvider) RemoveContainer(req *kubeapi.RemoveContainerRequest) (*kubeapi.RemoveContainerResponse, error) {
-	splits := strings.Split(req.GetContainerId(), ":")
-	contId := splits[1]
+	_, contId, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("RemoveContainer: err = %v", err)
+	}
 
-	err := d.client.ContainerRemove(context.Background(), contId, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
+	t, err := d.getTail(contId)
+	if err == nil {
+		t.Stop()
+	}
+
+	err = d.client.ContainerRemove(context.Background(), contId, dockertypes.ContainerRemoveOptions{RemoveVolumes: true})
 
 	resp := &kubeapi.RemoveContainerResponse{}
 
@@ -176,8 +199,12 @@ func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*ku
 
 	if req.Filter != nil {
 		if req.Filter.Id != nil {
-			splits := strings.Split(req.Filter.GetId(), ":")
-			f.Add("id", splits[1])
+			_, contId, err := icommon.ParseContainer(req.GetFilter().GetId())
+			if err != nil {
+				return nil, fmt.Errorf("ListContainers: err = %v", err)
+			}
+
+			f.Add("id", contId)
 		}
 
 		if req.Filter.State != nil {
@@ -228,9 +255,10 @@ func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*ku
 }
 
 func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kubeapi.ContainerStatusResponse, error) {
-	splits := strings.Split(req.GetContainerId(), ":")
-	podId := splits[0]
-	contId := splits[1]
+	podId, contId, err := icommon.ParseContainer(req.GetContainerId())
+	if err != nil {
+		return nil, fmt.Errorf("ContainerStatus: err = %v", err)
+	}
 
 	r, err := d.client.ContainerInspect(context.Background(), contId)
 	if err != nil {
@@ -259,7 +287,7 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 	var reason string
 	if r.State.Running {
 		// Container is running.
-		state = kubeapi.ContainerState_RUNNING
+		state = kubeapi.ContainerState_CONTAINER_RUNNING
 	} else {
 		// Container is *not* running. We need to get more details.
 		//    * Case 1: container has run and exited with non-zero finishedAt
@@ -268,7 +296,7 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 		//              time, but a non-zero exit code.
 		//    * Case 3: container has been created, but not started (yet).
 		if !finishedAt.IsZero() { // Case 1
-			state = kubeapi.ContainerState_EXITED
+			state = kubeapi.ContainerState_CONTAINER_EXITED
 			switch {
 			case r.State.OOMKilled:
 				// Note: if an application handles OOMKilled gracefully, the
@@ -280,13 +308,13 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 				reason = fmt.Sprintf("Error: %s", r.State.Error)
 			}
 		} else if !finishedAt.IsZero() && r.State.ExitCode != 0 { // Case 2
-			state = kubeapi.ContainerState_EXITED
+			state = kubeapi.ContainerState_CONTAINER_EXITED
 			// Adjust finshedAt and startedAt time to createdAt time to avoid
 			// the confusion.
 			finishedAt, startedAt = createdAt, createdAt
 			reason = "ContainerCannotRun"
 		} else { // Case 3
-			state = kubeapi.ContainerState_CREATED
+			state = kubeapi.ContainerState_CONTAINER_CREATED
 		}
 	}
 
@@ -329,6 +357,29 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 	return resp, nil
 }
 
-func (d *dockerProvider) Exec(_ kubeapi.RuntimeService_ExecServer) error {
-	return errors.New("unimplemented")
+func (d *dockerProvider) setTail(cont string, tail *tail.Tail) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	d.tailMap[cont] = tail
+}
+
+func (d *dockerProvider) getTail(cont string) (*tail.Tail, error) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	tail, ok := d.tailMap[cont]
+	if !ok {
+		return nil, fmt.Errorf("getTail: %v doesn't exist", cont)
+	}
+
+	return tail, nil
+}
+
+func getTimeoutContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), defaultTimeout)
+}
+
+func getCancelableContext() (context.Context, context.CancelFunc) {
+	return context.WithCancel(context.Background())
 }

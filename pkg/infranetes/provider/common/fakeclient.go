@@ -1,7 +1,7 @@
 package common
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
@@ -47,28 +47,48 @@ func (c *fakeClient) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*kube
 	return c.fakeProvider.ContainerStatus(req)
 }
 
+func (c *fakeClient) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
+	return c.fakeProvider.ExecSync(req)
+}
+
+func (c *fakeClient) Exec(req *kubeapi.ExecRequest) (*kubeapi.ExecResponse, error) {
+	return nil, errors.New("fake doesn't support streaming Exec")
+}
+
+func (c *fakeClient) Attach(req *kubeapi.AttachRequest) (*kubeapi.AttachResponse, error) {
+	return nil, errors.New("fake doesn't support streaming attach")
+}
+
+func (c *fakeClient) PortForward(req *kubeapi.PortForwardRequest) (*kubeapi.PortForwardResponse, error) {
+	return nil, errors.New("fake doesn't support streaming attach")
+}
+
+func (c *fakeClient) Version() (*kubeapi.VersionResponse, error) {
+	return &kubeapi.VersionResponse{}, nil
+}
+
 func (c *fakeClient) StartProxy() error {
-	return fmt.Errorf("Fake doesn't support StartProxy")
+	return errors.New("Fake doesn't support StartProxy")
 }
 
 func (c *fakeClient) RunCmd(req *common.RunCmdRequest) error {
-	return fmt.Errorf("Fake doesn't support RunCmd")
+	return errors.New("Fake doesn't support RunCmd")
 }
 
 func (c *fakeClient) SetPodIP(ip string) error {
-	return fmt.Errorf("Fake doesn't support RunCmd")
+	return errors.New("Fake doesn't support SetPodIP")
 }
 
 func (c *fakeClient) GetPodIP() (string, error) {
-	return "", fmt.Errorf("Fake doesn't support RunCmd")
+	return "", errors.New("Fake doesn't support GetPodIP")
 }
 
 func (c *fakeClient) SetSandboxConfig(config *kubeapi.PodSandboxConfig) error {
-	return fmt.Errorf("Fake doesn't support RunCmd")
+	return errors.New("Fake doesn't support SetSandboxConfig")
 }
 
 func (c *fakeClient) GetSandboxConfig() (*kubeapi.PodSandboxConfig, error) {
-	return nil, fmt.Errorf("Fake doesn't support RunCmd")
+	return nil, errors.New("Fake doesn't support GetSandboxConfig")
 }
 
 func (c *fakeClient) CopyFile(file string) error {
@@ -80,7 +100,12 @@ func (c *fakeClient) MountFs(source string, target string, fstype string, readOn
 }
 
 func (c *fakeClient) SetHostname(hostname string) error {
-	return fmt.Errorf("Fake doesn't support RunCmd")
+	return errors.New("Fake doesn't support RunCmd")
 }
+
 func (c *fakeClient) Close() {
+}
+
+func (c *fakeClient) SaveLogs(container string, path string) error {
+	return nil
 }

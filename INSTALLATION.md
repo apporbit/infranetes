@@ -2,7 +2,7 @@
 
 Installing Infranetes is currently a relatively manual affair.  
 
-For these instructions we assume you can already create a kubernetes cluster (and these instructions assume it was via `cluster/kube-up.sh` on aws from kubernetes)
+For these instructions we assume you can already create a kubernetes cluster (and these instructions assume it is created via `cluster/kube-up.sh` on aws from kubernetes)
 
 1. Build infranetes and vmserver
 
@@ -13,6 +13,8 @@ For these instructions we assume you can already create a kubernetes cluster (an
 4. Changing kubelet on an existing node to use infranetes as its container runtime via the CRI
 
 5. Labeling and taininting the node to ensure that only pods meant to be scheduled via infranetes are scheduled to this node
+
+6. Modify AWS VPC to work on the Intenet
 
 ## 1. Building infranetes and vmserver
 
@@ -115,7 +117,7 @@ This section currently assumes that one created an aws kubernetes cluster with `
 
  change DAEMON_ARGS to
 
- DAEMON_ARGS="$DAEMON_ARGS --api-servers=https://172.20.0.9 --enable-debugging-handlers=true  --hostname-override=ip-172-20-0-57.us-west-2.compute.internal --cloud-provider=aws  --config=/etc/kubernetes/manifests  --allow-privileged=True --v=4 --cluster-dns=10.0.0.10 --cluster-domain=cluster.local    --non-masquerade-cidr=10.0.0.0/8  --babysit-daemons=true  --container-runtime=remote --container-runtime-endpoint=/tmp/infra " 
+ DAEMON_ARGS="$DAEMON_ARGS --api-servers=https://172.20.0.9 --enable-debugging-handlers=true  --hostname-override=ip-172-20-0-57.us-west-2.compute.internal --cloud-provider=aws  --config=/etc/kubernetes/manifests  --allow-privileged=True --v=4 --cluster-dns=10.0.0.10 --cluster-domain=cluster.local    --non-masquerade-cidr=10.0.0.0/8  --babysit-daemons=true --experimental-cri --container-runtime=remote --container-runtime-endpoint=/tmp/infra " 
  ```
 
 5. on the node, run infranetes as root (I currently use a screen/tmux session for this)
@@ -141,3 +143,8 @@ on a macine that can use kubectl to manage the kubernetes cluster label and tain
 ---
 Congratulations, you should know have a working kubernetes cluster that can selected pods into independent VMs
 
+## 6. AWS Configuration modifications
+
+In order for these VMs to be usable on the internet, i.e. to fetch docker immage, the kubernetes vpc they use has to be configured to get an ipv4 IP
+
+namely, in the vpc/subnet configuration, one selects the vpc-kubernetes subnet and uses modify auto-assign ip-settings to ensure its enabled.
