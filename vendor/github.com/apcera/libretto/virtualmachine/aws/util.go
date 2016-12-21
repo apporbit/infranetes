@@ -149,7 +149,7 @@ func getService(region string) *ec2.EC2 {
 		Credentials: creds,
 		Region:      &region,
 		//CredentialsChainVerboseErrors: aws.Bool(true),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient:                    &http.Client{Timeout: 30 * time.Second},
 	}))
 }
 
