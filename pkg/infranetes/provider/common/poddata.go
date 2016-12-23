@@ -212,9 +212,9 @@ func (p *PodData) GetPodState() kubeapi.PodSandboxState {
 		return kubeapi.PodSandboxState_SANDBOX_NOTREADY
 	}
 
-	_, err := p.Client.Version()
+	err := p.Client.Ready()
 	if err != nil {
-		glog.Infof("GetPodState: pod %v Version failed: err = %v", *p.Id, err)
+		glog.Infof("GetPodState: pod %v not Ready: %v", err)
 		return kubeapi.PodSandboxState_SANDBOX_NOTREADY
 	}
 

@@ -67,6 +67,10 @@ func (c *fakeClient) Version() (*kubeapi.VersionResponse, error) {
 	return &kubeapi.VersionResponse{}, nil
 }
 
+func (c *fakeClient) Ready() error {
+	return nil
+}
+
 func (c *fakeClient) StartProxy() error {
 	return errors.New("Fake doesn't support StartProxy")
 }
