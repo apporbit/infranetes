@@ -48,6 +48,7 @@ type Client interface {
 	SetHostname(hostname string) error
 	Close()
 	Version() (*kubeapi.VersionResponse, error)
+	Ready() error
 	SaveLogs(container string, path string) error
 }
 
@@ -118,10 +119,15 @@ func (c *RealClient) PortForward(req *kubeapi.PortForwardRequest) (*kubeapi.Port
 }
 
 func (c *RealClient) Version() (*kubeapi.VersionResponse, error) {
+	return c.kubeclient.Version(context.Background(), &kubeapi.VersionRequest{})
+}
+
+func (c *RealClient) Ready() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	return c.kubeclient.Version(ctx, &kubeapi.VersionRequest{})
+	_, err := c.kubeclient.Version(ctx, &kubeapi.VersionRequest{})
+	return err
 }
 
 func (c *RealClient) StartProxy() error {

@@ -117,13 +117,13 @@ This section currently assumes that one created an aws kubernetes cluster with `
 
  change DAEMON_ARGS to
 
- DAEMON_ARGS="$DAEMON_ARGS --api-servers=https://172.20.0.9 --enable-debugging-handlers=true  --hostname-override=ip-172-20-0-57.us-west-2.compute.internal --cloud-provider=aws  --config=/etc/kubernetes/manifests  --allow-privileged=True --v=4 --cluster-dns=10.0.0.10 --cluster-domain=cluster.local    --non-masquerade-cidr=10.0.0.0/8  --babysit-daemons=true --experimental-cri --container-runtime=remote --container-runtime-endpoint=/tmp/infra " 
+ DAEMON_ARGS="--api-servers=https://172.20.0.9 --enable-debugging-handlers=true --cloud-provider=aws --config=/etc/kubernetes/manifests --allow-privileged=True --v=4 --cluster-dns=10.0.0.10 --cluster-domain=cluster.local --non-masquerade-cidr=10.0.0.0/8 --cgroup-root=/ --babysit-daemons=true --experimental-cri --container-runtime=remote --container-runtime-endpoint=/tmp/infra --feature-gates StreamingProxyRedirects=true --experimental-cgroups-per-qos=true"
  ```
 
 5. on the node, run infranetes as root (I currently use a screen/tmux session for this)
 
  ```bash
- # ./infranetes -alsologtostderr -listen /tmp/infra -podprovider aws -master-ip 172.20.0.9 -base-ip 10.244.10
+ # ./infranetes -alsologtostderr -listen /tmp/infra -podprovider aws -master-ip 172.20.0.9 -base-ip 10.245.10
  ```
 
 6. on the node restart kubelet to use the new configuration
@@ -132,7 +132,11 @@ This section currently assumes that one created an aws kubernetes cluster with `
  # systemctl restart kubelet
  ```
 
-## 5. Label/Taint the new Infranetes node
+## 5. Modify Master Component to be CRI aware
+
+add --feature-gates StreamingProxyRedirects=true to apiserver cmd line
+
+## 6. Label/Taint the new Infranetes node
 
 on a macine that can use kubectl to manage the kubernetes cluster label and taint this node
 

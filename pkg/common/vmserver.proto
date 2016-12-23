@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package common;
 
+service Metrics {
+    rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
+}
+
 service VMServer {
     //rpc UploadFiles(File) returns (UploadResponse) {}
     rpc StartProxy(StartProxyRequest) returns (StartProxyResponse) {}
@@ -14,6 +18,15 @@ service VMServer {
     rpc MountFs(MountFsRequest) returns (MountFsResponse) {}
     rpc SetHostname(SetHostnameRequest) returns (SetHostnameResponse) {}
     rpc Logs(LogsRequest) returns (stream LogLine) {}
+    rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
+}
+
+message GetMetricsRequest {
+    int32 count = 1;
+}
+
+message GetMetricsResponse {
+   repeated bytes jsonMetricResponses = 1;
 }
 
 message LogsRequest {

@@ -90,6 +90,19 @@ func (s *Manager) Version(ctx context.Context, req *kubeapi.VersionRequest) (*ku
 func (m *Manager) RunPodSandbox(ctx context.Context, req *kubeapi.RunPodSandboxRequest) (*kubeapi.RunPodSandboxResponse, error) {
 	cookie := rand.Int()
 	glog.Infof("%d: RunPodSandbox: req = %+v", cookie, req)
+	vcpu, err := common.GetCpuLimitFromCgroup(req.GetConfig().GetLinux().GetCgroupParent())
+	if err != nil {
+		glog.Infof("Couldn't parse cpu limits: %v", err)
+	} else {
+		glog.Infof("CPU Limit = %v", vcpu)
+	}
+
+	mem, err := common.GetMemeoryLimitFromCgroup(req.GetConfig().GetLinux().GetCgroupParent())
+	if err != nil {
+		glog.Infof("Couldn't parse mem limits: %v", err)
+	} else {
+		glog.Infof("MEM Limit = %v", mem)
+	}
 
 	resp, err := m.createSandbox(req)
 
