@@ -1,28 +1,62 @@
 package vmserver
 
 import (
+	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"net"
+	"net/http"
+	"time"
 
 	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/google/cadvisor/cache/memory"
+	cadvisormetrics "github.com/google/cadvisor/container"
+	cadvisorapiv2 "github.com/google/cadvisor/info/v2"
+	"github.com/google/cadvisor/manager"
+	"github.com/google/cadvisor/utils/sysfs"
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
+	"k8s.io/kubernetes/pkg/kubelet/types"
 
 	"github.com/sjpotter/infranetes/pkg/common"
-
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
+
+const statsCacheDuration = 2 * time.Minute
+const maxHousekeepingInterval = 15 * time.Second
+const defaultHousekeepingInterval = 10 * time.Second
+const allowDynamicHousekeeping = true
+
+func init() {
+	// Override cAdvisor flag defaults.
+	flagOverrides := map[string]string{
+		// Override the default cAdvisor housekeeping interval.
+		"housekeeping_interval": defaultHousekeepingInterval.String(),
+		// Disable event storage by default.
+		"event_storage_event_limit": "default=0",
+		"event_storage_age_limit":   "default=0",
+	}
+	for name, defaultValue := range flagOverrides {
+		if f := flag.Lookup(name); f != nil {
+			f.DefValue = defaultValue
+			f.Value.Set(defaultValue)
+		} else {
+			glog.Errorf("Expected cAdvisor flag %q not found", name)
+		}
+	}
+}
 
 type VMserver struct {
 	contProvider    ContainerProvider
 	server          *grpc.Server
 	podIp           *string
-	config          []byte
+	config          *kubeapi.PodSandboxConfig
 	streamingServer streaming.Server
+	cadvisor        manager.Manager
 }
 
 func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VMserver, error) {
@@ -32,9 +66,24 @@ func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VM
 		return nil, err
 	}
 	opts = []grpc.ServerOption{grpc.Creds(creds)}
+
+	sysFs, err := sysfs.NewRealSysFs()
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't create sysfs object: %v", err)
+	}
+	m, err := manager.New(memory.New(statsCacheDuration, nil), sysFs, maxHousekeepingInterval, allowDynamicHousekeeping, cadvisormetrics.MetricSet{cadvisormetrics.NetworkTcpUsageMetrics: struct{}{}}, http.DefaultClient)
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't create cadvisor manager: %v", err)
+	}
+	err = m.Start()
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't start cadvisor manager")
+	}
+
 	manager := &VMserver{
 		contProvider: contProvider,
 		server:       grpc.NewServer(opts...),
+		cadvisor:     m,
 	}
 
 	manager.registerServer()
@@ -183,4 +232,35 @@ func (m *VMserver) Logs(req *common.LogsRequest, stream common.VMServer_LogsServ
 	glog.Infof("Logs: err = %v", err)
 
 	return err
+}
+
+func (m *VMserver) GetMetrics(ctx context.Context, req *common.GetMetricsRequest) (*common.GetMetricsResponse, error) {
+	glog.Infof("GetMetrics: req = %+v", req)
+
+	options := cadvisorapiv2.RequestOptions{
+		IdType:    cadvisorapiv2.TypeName,
+		Count:     int(req.Count),
+		Recursive: true,
+	}
+
+	infos, err := m.cadvisor.GetContainerInfoV2("/", options)
+	containers := [][]byte{}
+	if err == nil {
+		for _, info := range infos {
+			if _, ok := info.Spec.Labels[types.KubernetesPodNameLabel]; ok {
+				container, err := json.Marshal(info)
+				if err != nil {
+					glog.Infof("GetMetrics: couldn't marshall the json: %v", err)
+				} else {
+					containers = append(containers, container)
+				}
+			}
+		}
+	}
+
+	resp := &common.GetMetricsResponse{JsonMetricResponses: containers}
+
+	glog.Infof("GetMetrics: resp = %+v, err = %v", resp, err)
+
+	return resp, err
 }

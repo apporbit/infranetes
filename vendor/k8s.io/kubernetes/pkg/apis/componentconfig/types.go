@@ -483,6 +483,11 @@ type KubeletConfiguration struct {
 	// (binaries, etc.) to mount the volume are available on the underlying node. If the check is enabled
 	// and fails the mount operation fails.
 	ExperimentalCheckNodeCapabilitiesBeforeMount bool
+	// Thise flag, if set, enables kubelet to override the detected cpu and memory limits
+	ExperimentalOverrideLimits bool
+	// These flags, if set, work with the above Override flag to restrict the limits, otherwise they are unrestricted
+	CPULimit int64
+	MemLimit int64
 }
 
 type KubeletAuthorizationMode string

@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/golang/glog"
+
 	libcontainercgroups "github.com/opencontainers/runc/libcontainer/cgroups"
 )
 
@@ -77,4 +79,49 @@ func readCgroupFileToInt64(cgroupPath, cgroupFile string) (int64, error) {
 	} else {
 		return -1, err
 	}
+}
+
+func ParseAnnotations(annotations map[string]string) (startProxy, createInteface, sethostname, handleRoutes bool) {
+	startProxy = true
+	createInteface = true
+	sethostname = true
+	handleRoutes = true
+
+	if a, ok := annotations["infranetes.startproxy"]; ok {
+		b, err := strconv.ParseBool(a)
+		if err != nil {
+			glog.Infof("Couldn't parse bool %v for infranetes.startproxy: %v", a, err)
+		} else {
+			startProxy = b
+		}
+	}
+
+	if a, ok := annotations["infranetes.createinterface"]; ok {
+		b, err := strconv.ParseBool(a)
+		if err != nil {
+			glog.Infof("Couldn't parse bool %v for infranetes.createinterface: %v", a, err)
+		} else {
+			createInteface = b
+		}
+	}
+
+	if a, ok := annotations["infranetes.sethostname"]; ok {
+		b, err := strconv.ParseBool(a)
+		if err != nil {
+			glog.Infof("Couldn't parse bool %v for infranetes.sethostname: %v", a, err)
+		} else {
+			sethostname = b
+		}
+	}
+
+	if a, ok := annotations["infranetes.handleroutes"]; ok {
+		b, err := strconv.ParseBool(a)
+		if err != nil {
+			glog.Infof("Couldn't parse bool %v for infranetes.handleroutes: %v", a, err)
+		} else {
+			handleRoutes = b
+		}
+	}
+
+	return
 }

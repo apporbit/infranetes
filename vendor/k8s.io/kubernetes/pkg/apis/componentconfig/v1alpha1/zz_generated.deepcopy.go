@@ -481,6 +481,9 @@ func DeepCopy_v1alpha1_KubeletConfiguration(in interface{}, out interface{}, c *
 		out.EnableCRI = in.EnableCRI
 		out.ExperimentalFailSwapOn = in.ExperimentalFailSwapOn
 		out.ExperimentalCheckNodeCapabilitiesBeforeMount = in.ExperimentalCheckNodeCapabilitiesBeforeMount
+		out.ExperimentalOverrideLimits = in.ExperimentalOverrideLimits
+		out.CPULimit = in.CPULimit
+		out.MemLimit = in.MemLimit
 		return nil
 	}
 }

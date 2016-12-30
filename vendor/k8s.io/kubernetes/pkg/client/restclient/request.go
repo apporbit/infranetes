@@ -69,6 +69,7 @@ type HTTPClient interface {
 type ResponseWrapper interface {
 	DoRaw() ([]byte, error)
 	Stream() (io.ReadCloser, error)
+	URL() *url.URL
 }
 
 // RequestConstructionError is returned when there's an error assembling a request.

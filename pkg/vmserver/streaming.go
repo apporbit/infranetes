@@ -20,6 +20,12 @@ func (m *VMserver) startStreamingServer() error {
 		return nil
 	}
 
+	if m.podIp == nil {
+		glog.Infof("startStreamingServer: podIp is nil, no streamingServer")
+		m.streamingServer = nil
+		return nil
+	}
+
 	addr := *m.podIp + ":12345"
 
 	//TODO(sjpotter): Figure out how to work with TLS?

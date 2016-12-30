@@ -79,7 +79,7 @@ func (c *fakeClient) RunCmd(req *common.RunCmdRequest) error {
 	return errors.New("Fake doesn't support RunCmd")
 }
 
-func (c *fakeClient) SetPodIP(ip string) error {
+func (c *fakeClient) SetPodIP(ip string, createInterface bool) error {
 	return errors.New("Fake doesn't support SetPodIP")
 }
 
@@ -112,4 +112,8 @@ func (c *fakeClient) Close() {
 
 func (c *fakeClient) SaveLogs(container string, path string) error {
 	return nil
+}
+
+func (c *fakeClient) GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error) {
+	return &common.GetMetricsResponse{}, nil
 }
