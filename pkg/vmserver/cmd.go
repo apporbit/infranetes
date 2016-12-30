@@ -1,18 +1,20 @@
 package vmserver
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 
 	"golang.org/x/net/context"
 
 	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
-	"syscall"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 func (m *VMserver) RunCmd(ctx context.Context, req *common.RunCmdRequest) (*common.RunCmdResponse, error) {
@@ -28,16 +30,19 @@ func (m *VMserver) SetPodIP(ctx context.Context, req *common.SetIPRequest) (*com
 		return nil, fmt.Errorf("SetPodIP: %v is an invalid ip address", req.Ip)
 	}
 
-	args := []string{"eth0:0", req.Ip, "netmask", "255.255.255.255"}
+	if req.CreateInterface {
+		args := []string{"eth0:0", req.Ip, "netmask", "255.255.255.255"}
 
-	cmd := exec.Command("ifconfig", args...)
-	err := cmd.Run()
-
-	if err == nil {
-		m.podIp = &req.Ip
+		cmd := exec.Command("ifconfig", args...)
+		err := cmd.Run()
+		if err != nil {
+			glog.Errorf("failed to create new inteface for ip %v: %v", req.Ip, err)
+		}
 	}
 
-	err = m.startStreamingServer()
+	m.podIp = &req.Ip
+
+	err := m.startStreamingServer()
 	if err != nil {
 		glog.Warning("SetPodIP: couldn't start streaming server for exec/attach")
 	}
@@ -54,7 +59,12 @@ func (m *VMserver) GetPodIP(ctx context.Context, req *common.GetIPRequest) (*com
 }
 
 func (m *VMserver) SetSandboxConfig(ctx context.Context, req *common.SetSandboxConfigRequest) (*common.SetSandboxConfigResponse, error) {
-	m.config = req.Config
+	var sandboxConfig kubeapi.PodSandboxConfig
+	err := json.Unmarshal(req.Config, &sandboxConfig)
+	if err != nil {
+		return nil, fmt.Errorf("SetSandboxConfig: couldn't unmarshall the sandbox config")
+	}
+	m.config = &sandboxConfig
 
 	return &common.SetSandboxConfigResponse{}, nil
 }
@@ -64,7 +74,12 @@ func (m *VMserver) GetSandboxConfig(ctx context.Context, req *common.GetSandboxC
 		return nil, fmt.Errorf("GetSandboxConfig: sandbox config wasn't set")
 	}
 
-	return &common.GetSandboxConfigResponse{Config: m.config}, nil
+	ret, err := json.Marshal(m.config)
+	if err != nil {
+		return nil, fmt.Errorf("GetSandboxConfig: couldn't marshall sandbox config")
+	}
+
+	return &common.GetSandboxConfigResponse{Config: ret}, nil
 }
 
 func (m *VMserver) CopyFile(ctx context.Context, req *common.CopyFileRequest) (*common.CopyFileResponse, error) {

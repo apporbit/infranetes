@@ -81,7 +81,9 @@ func (*awsPodProvider) UpdatePodState(data *common.PodData) {
 	}
 }
 
-func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, podIp string) (*common.PodData, error) {
+func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, name string) (*common.PodData, error) {
+	startProxy, createInterface, setHostname, handleRoutes := common.ParseAnnotations(config.Annotations)
+
 	if err := vm.Provision(); err != nil {
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
@@ -102,26 +104,31 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 
 	ip := ips[index].String()
 
-	name := vm.InstanceID
-
 	client, err := common.CreateRealClient(ip)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
 
-	err = client.StartProxy()
-	if err != nil {
-		client.Close()
-		glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
+	if startProxy {
+		err = client.StartProxy()
+		if err != nil {
+			client.Close()
+			glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
+		}
 	}
 
-	err = client.SetHostname(config.GetHostname())
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
+	if setHostname {
+		err = client.SetHostname(config.GetHostname())
+		if err != nil {
+			glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
+		}
 	}
 
-	err = client.SetPodIP(podIp)
-
+	podIp := ip
+	if createInterface {
+		podIp = name
+	}
+	err = client.SetPodIP(podIp, createInterface)
 	if err != nil {
 		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
 	}
@@ -137,17 +144,19 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 		glog.Warningf("CreatePodSandbox: destSourceReset failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
 	}
 
-	err = addRoute(p.config.RouteTable, name, podIp)
-	if err != nil {
-		awsErr := err.(awserr.Error)
-		glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+	if handleRoutes {
+		err = addRoute(p.config.RouteTable, name, podIp)
+		if err != nil {
+			awsErr := err.(awserr.Error)
+			glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+		}
 	}
 
 	providerData := &podData{}
 
 	booted := true
 
-	podData := common.NewPodData(vm, &podIp, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }

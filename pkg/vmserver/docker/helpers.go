@@ -6,21 +6,36 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-func generateMountBindings(mounts []*kubeapi.Mount) (result []string) {
+func generateMountBindings(mounts []*kubeapi.Mount, sharedPaths map[string]bool) (result []string) {
 	// TODO: resolve podHasSELinuxLabel
 	for _, m := range mounts {
 		bind := fmt.Sprintf("%s:%s", m.GetHostPath(), m.GetContainerPath())
+
 		readOnly := m.GetReadonly()
+		shared, _ := sharedPaths[m.GetHostPath()]
+
+		opts := ""
+
 		if readOnly {
-			bind += ":ro"
+			opts += ":ro"
 		}
+
 		if m.GetSelinuxRelabel() {
-			if readOnly {
-				bind += ",Z"
-			} else {
+			if opts == "" {
 				bind += ":Z"
+			} else {
+				bind += ",Z"
 			}
 		}
+
+		if shared {
+			if opts == "" {
+				bind += ":rshared"
+			} else {
+				bind += ",rshared"
+			}
+		}
+
 		result = append(result, bind)
 	}
 	return

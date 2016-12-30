@@ -72,6 +72,8 @@ func (s *Manager) Serve(addr string) error {
 func (s *Manager) registerServer() {
 	kubeapi.RegisterRuntimeServiceServer(s.server, s)
 	kubeapi.RegisterImageServiceServer(s.server, s)
+	icommon.RegisterMetricsServer(s.server, s)
+
 }
 
 func (s *Manager) Version(ctx context.Context, req *kubeapi.VersionRequest) (*kubeapi.VersionResponse, error) {
@@ -512,4 +514,25 @@ func (m *Manager) RemoveImage(ctx context.Context, req *kubeapi.RemoveImageReque
 	glog.Infof("RemoveImage: resp = %+v, err = %v", resp, err)
 
 	return resp, err
+}
+
+func (m *Manager) GetMetrics(ctx context.Context, req *icommon.GetMetricsRequest) (*icommon.GetMetricsResponse, error) {
+	glog.Infof("GetMetrics: req = %+v", req)
+
+	containers := [][]byte{}
+
+	for _, podData := range m.copyVMMap() {
+		resp, err := podData.Client.GetMetric(req)
+		if err == nil {
+			containers = append(containers, resp.JsonMetricResponses...)
+		} else {
+			glog.Warningf("Couldn't get metrics for %v: %v", *podData.Id, err)
+		}
+	}
+
+	resp := &icommon.GetMetricsResponse{JsonMetricResponses: containers}
+
+	glog.Infof("GetMetrics: len of containers slice = %v", len(containers))
+
+	return resp, nil
 }

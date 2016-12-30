@@ -39,7 +39,7 @@ type Client interface {
 
 	StartProxy() error
 	RunCmd(req *common.RunCmdRequest) error
-	SetPodIP(ip string) error
+	SetPodIP(ip string, createInteface bool) error
 	GetPodIP() (string, error)
 	SetSandboxConfig(config *kubeapi.PodSandboxConfig) error
 	GetSandboxConfig() (*kubeapi.PodSandboxConfig, error)
@@ -50,6 +50,7 @@ type Client interface {
 	Version() (*kubeapi.VersionResponse, error)
 	Ready() error
 	SaveLogs(container string, path string) error
+	GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error)
 }
 
 type RealClient struct {
@@ -150,8 +151,8 @@ func (c *RealClient) RunCmd(req *common.RunCmdRequest) error {
 	return err
 }
 
-func (c *RealClient) SetPodIP(ip string) error {
-	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip})
+func (c *RealClient) SetPodIP(ip string, createInterface bool) error {
+	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip, CreateInterface: createInterface})
 
 	return err
 }
@@ -283,6 +284,12 @@ func (c *RealClient) SaveLogs(container string, path string) error {
 	}
 
 	return nil
+}
+
+func (c *RealClient) GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error) {
+	resp, err := c.vmclient.GetMetrics(context.Background(), req)
+
+	return resp, err
 }
 
 func (c *RealClient) Close() {

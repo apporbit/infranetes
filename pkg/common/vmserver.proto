@@ -61,6 +61,7 @@ message RunCmdResponse{}
 
 message SetIPRequest {
     string ip = 1;
+    bool createInterface = 2;
 }
 
 message SetIPResponse{}

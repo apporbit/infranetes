@@ -2,9 +2,13 @@ package docker
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
+	"os"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/golang/glog"
@@ -22,6 +26,7 @@ import (
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
+	"errors"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -38,12 +43,39 @@ const (
 	defaultTimeout     = 2 * time.Minute
 )
 
+type StringList []string
+
+// implement flag.Value:
+// https://golang.org/pkg/flag/#Value
+
+func (s *StringList) Set(arg string) error {
+	arr := strings.Split(arg, ",")
+
+	for _, e := range arr {
+		*s = append(*s, e)
+	}
+
+	return nil
+}
+
+func (s *StringList) String() string {
+	return fmt.Sprintf(`"%v"`, *s)
+}
+
+var (
+	mountablePaths StringList
+)
+
 func init() {
+	flag.Var(&mountablePaths, "mountablePaths", "Paths vmserver should bind mount to themselves for docker")
 	vmserver.ContainerProviders.RegisterProvider("docker", NewDockerProvider)
 }
 
 func NewDockerProvider() (vmserver.ContainerProvider, error) {
 	glog.Infof("DockerProvider: starting")
+
+	createMountablePaths()
+
 	if client, err := dockerclient.NewClient(dockerclient.DefaultDockerHost, "", nil, nil); err != nil {
 		return nil, err
 	} else {
@@ -59,6 +91,9 @@ func NewDockerProvider() (vmserver.ContainerProvider, error) {
 
 		return d, nil
 	}
+}
+
+func createMountablePaths() {
 }
 
 func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
@@ -116,15 +151,22 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 		Labels:    labels,
 	}
 
+	sharedPaths, err := handleSharedPaths(config.Annotations)
+	if err != nil {
+		return nil, fmt.Errorf("ContainerCreate Failed: %v", err)
+	}
+
 	hostConfig := &dockercontainer.HostConfig{
-		Binds:       generateMountBindings(config.GetMounts()),
+		Binds:       generateMountBindings(config.GetMounts(), sharedPaths),
 		IpcMode:     "host",
 		PidMode:     "host",
 		NetworkMode: "host",
 		UTSMode:     "host",
-		DNS:         req.SandboxConfig.DnsConfig.Servers,
-		DNSOptions:  req.SandboxConfig.DnsConfig.Options,
-		DNSSearch:   req.SandboxConfig.DnsConfig.Searches,
+	}
+	if req.SandboxConfig.DnsConfig != nil {
+		hostConfig.DNS = req.SandboxConfig.DnsConfig.Servers
+		hostConfig.DNSOptions = req.SandboxConfig.DnsConfig.Options
+		hostConfig.DNSSearch = req.SandboxConfig.DnsConfig.Searches
 	}
 
 	dockResp, err := d.client.ContainerCreate(context.Background(), createConfig, hostConfig, nil, "")
@@ -139,6 +181,36 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 	}
 
 	return resp, nil
+}
+
+func handleSharedPaths(annotations map[string]string) (map[string]bool, error) {
+	ret := make(map[string]bool)
+	pathsString, ok := annotations["infranetes.sharedpaths"]
+	if !ok {
+		return ret, nil
+	}
+
+	paths := strings.Split(pathsString, ",")
+	for _, path := range paths {
+		os.MkdirAll(path, 0755)
+		err := syscall.Mount(path, path, "", syscall.MS_BIND|syscall.MS_MGC_VAL, "")
+		if err != nil {
+			msg := fmt.Sprintf("Failed to bind mount %v: %v", path, err)
+			glog.Error(msg)
+			return nil, errors.New(msg)
+		} else {
+			err := syscall.Mount("none", path, "", syscall.MS_REC|syscall.MS_SHARED, "")
+			if err != nil {
+				msg := fmt.Sprintf("failed to make path %v shared: %v", path, err)
+				glog.Error(msg)
+				return nil, errors.New(msg)
+			}
+
+			ret[path] = true
+		}
+	}
+
+	return ret, nil
 }
 
 func (d *dockerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
