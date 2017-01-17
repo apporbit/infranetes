@@ -93,6 +93,12 @@ This section currently assumes that one created an aws kubernetes cluster with `
  export AWS_ACCESS_KEY_ID=<fill in>
  export AWS_SECRET_ACCESS_KEY=<fil in>
  ```
+ 
+2. a) Creates a new subnet within the kubernetes vpc for use by infrantes.
+
+   b) Add it to the kubernetes route table
+    
+   c) Configure it to auto assign a public ip address
 
 2. create an `aws.json` that corresponds to one's kubernetes cluster configuration
 
@@ -103,7 +109,7 @@ This section currently assumes that one created an aws kubernetes cluster with `
   "Region":"<region running in",
   "SecurityGroup":"<sg-id created by kube-up>",
   "Vpc":"<vpc-id created by kube-up>",
-  "Subnet":"<subnet-id created by kube-up>",
+  "Subnet":"<subnet-id created above>",
   "SshKey":"<key used to connect to ubuntu account>"
  }
  ```
@@ -123,8 +129,15 @@ This section currently assumes that one created an aws kubernetes cluster with `
 5. on the node, run infranetes as root (I currently use a screen/tmux session for this)
 
  ```bash
- # ./infranetes -alsologtostderr -listen /tmp/infra -podprovider aws -master-ip 172.20.0.9 -base-ip 10.245.10
+ # ./infranetes -alsologtostderr -listen /tmp/infra -podprovider aws -master-ip 172.20.0.9 -base-ip <base ip of subnet created above>
  ```
+ 
+ With AWS created via kube-up, we can autodetect the master and subnet base ip, so can simplify startup to
+ 
+  ```bash
+  # ./infranetes -alsologtostderr -listen /tmp/infra -podprovider aws
+  ```
+ 
 
 6. on the node restart kubelet to use the new configuration
 

@@ -39,7 +39,7 @@ type Client interface {
 
 	StartProxy() error
 	RunCmd(req *common.RunCmdRequest) error
-	SetPodIP(ip string, createInteface bool) error
+	SetPodIP(ip string) error
 	GetPodIP() (string, error)
 	SetSandboxConfig(config *kubeapi.PodSandboxConfig) error
 	GetSandboxConfig() (*kubeapi.PodSandboxConfig, error)
@@ -151,8 +151,8 @@ func (c *RealClient) RunCmd(req *common.RunCmdRequest) error {
 	return err
 }
 
-func (c *RealClient) SetPodIP(ip string, createInterface bool) error {
-	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip, CreateInterface: createInterface})
+func (c *RealClient) SetPodIP(ip string) error {
+	_, err := c.vmclient.SetPodIP(context.Background(), &common.SetIPRequest{Ip: ip})
 
 	return err
 }

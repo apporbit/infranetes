@@ -31,6 +31,7 @@ type awsPodProvider struct {
 	config *awsConfig
 	ipList *utils.Deque
 	amiPod bool
+	key    string
 }
 
 func init() {
@@ -62,16 +63,46 @@ func NewAWSPodProvider() (provider.PodProvider, error) {
 
 	glog.Infof("Validated AWS Credentials")
 
-	ipList := utils.NewDeque()
-	for i := 1; i <= 255; i++ {
-		ipList.Append(fmt.Sprint(*flags.IPBase + "." + strconv.Itoa(i)))
+	rawKey, err := ioutil.ReadFile(conf.SshKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read key: %v\n", err)
 	}
 
 	initEC2(conf.Region)
 
+	// FIXME: probably want to pull out ip handling into a "network plugin", would want to verify boot image supports plugin
+	// Currently: this just controls allocation to an independent infranetes subnet, L3 routing has to be setup correctly on cloud
+	// Enable autodetection of infranetes ip range
+	if *flags.IPBase == "" {
+		base, err := findBase(&conf.Subnet)
+		if err != nil {
+			msg := fmt.Sprintf("findBase failed: %v", err)
+			glog.Errorf(msg)
+			return nil, errors.New(msg)
+		}
+		flags.IPBase = base
+	}
+
+	if *flags.MasterIP == "" {
+		masterIP, ok := findMaster()
+		if ok != true {
+			msg := fmt.Sprintf("Couldn't find kube master ip")
+			glog.Error(msg)
+			return nil, errors.New(msg)
+		}
+		flags.MasterIP = masterIP
+	}
+
+	ipList := utils.NewDeque()
+	// AWS VPC reserved .1->.3 and .255
+	for i := 4; i < 255; i++ {
+		ipList.Append(fmt.Sprint(*flags.IPBase + "." + strconv.Itoa(i)))
+	}
+
 	return &awsPodProvider{
 		config: &conf,
 		ipList: ipList,
+		key:    string(rawKey),
 	}, nil
 }
 
@@ -82,15 +113,17 @@ func (*awsPodProvider) UpdatePodState(data *common.PodData) {
 }
 
 func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, name string) (*common.PodData, error) {
-	startProxy, createInterface, setHostname, handleRoutes := common.ParseAnnotations(config.Annotations)
+	// 1. Parse Annotations from PodSandboxConfig
+	cAnno := common.ParseCommonAnnotations(config.Annotations)
 
+	// 2. Boot VM
 	if err := vm.Provision(); err != nil {
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
 
 	vm.SetTag("infranetes", "true")
 
-	index := 1
+	// 3. Extract IP Info
 	ips, err := vm.GetIPs()
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
@@ -98,58 +131,49 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 
 	glog.Infof("CreatePodSandbox: ips = %v", ips)
 
-	if ips[0] == nil {
-		index = 1
-	}
+	// FIXME: Perhaps better way to choose public vs private ip
+	index := 1
+	podIp := ips[index].String()
 
-	ip := ips[index].String()
+	glog.Infof("CreatePodSandbox: podIp = %v", podIp)
 
-	client, err := common.CreateRealClient(ip)
+	// 4. Connect to VMServer in VM
+	client, err := common.CreateRealClient(podIp)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
 	}
 
-	if startProxy {
-		err = client.StartProxy()
-		if err != nil {
-			client.Close()
-			glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
-		}
-	}
-
-	if setHostname {
-		err = client.SetHostname(config.GetHostname())
-		if err != nil {
-			glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
-		}
-	}
-
-	podIp := ip
-	if createInterface {
-		podIp = name
-	}
-	err = client.SetPodIP(podIp, createInterface)
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
-	}
-
+	// 5. Setup Instance / VM Correctly
+	// Store Config so can be recovered if neccessary
 	err = client.SetSandboxConfig(config)
 	if err != nil {
 		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
 	}
 
-	err = destSourceReset(name)
+	err = client.SetPodIP(podIp)
 	if err != nil {
-		awsErr := err.(awserr.Error)
-		glog.Warningf("CreatePodSandbox: destSourceReset failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
 	}
 
-	if handleRoutes {
-		err = addRoute(p.config.RouteTable, name, podIp)
+	// Do we start kube-proxy?
+	if cAnno.StartProxy {
+		err = client.StartProxy()
 		if err != nil {
-			awsErr := err.(awserr.Error)
-			glog.Warningf("CreatePodSandbox: add route failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+			client.Close()
+			glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
 		}
+	} else {
+		glog.Infof("CreatePodSandbox: Skipping Proxy")
+	}
+
+	// Do we set the hostname to the pod's name
+	if cAnno.SetHostname {
+		err = client.SetHostname(config.GetHostname())
+		if err != nil {
+			glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
+		}
+	} else {
+		glog.Infof("CreatePodSandbox: Skipping changing hostname")
 	}
 
 	providerData := &podData{}
@@ -162,55 +186,24 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 }
 
 func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
-	rawKey, err := ioutil.ReadFile(v.config.SshKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read key: %v\n", err)
-	}
-
-	ami := v.config.Ami
-	if image, ok := req.Config.Annotations["infranetes.image"]; ok {
-		glog.Infof("RunPodSandbox: overriding ami image with %v", image)
-		ami = image
-	}
-
-	role := ""
-	if iam, ok := req.Config.Annotations["infranetes.aws.iaminstancename"]; ok {
-		glog.Infof("RunPodSandbox: booting instance iam role %v", iam)
-		role = iam
-	}
-
-	awsName := req.Config.Metadata.GetNamespace() + ":" + req.Config.Metadata.GetName()
-	vm := &awsvm.VM{
-		Name:         awsName,
-		AMI:          ami,
-		InstanceType: "t2.micro",
-		//		InstanceType: "m4.large",
-		SSHCreds: ssh.Credentials{
-			SSHUser:       "ubuntu",
-			SSHPrivateKey: string(rawKey),
-		},
-		Volumes: []awsvm.EBSVolume{
-			{
-				DeviceName: "/dev/sda1",
-			},
-		},
-		Region:                 v.config.Region,
-		KeyPair:                strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
-		SecurityGroup:          v.config.SecurityGroup,
-		Subnet:                 v.config.Subnet,
-		IamInstanceProfileName: role,
-	}
-
 	podIp := v.ipList.Shift().(string)
 
-	if !v.amiPod {
-		return v.bootSandbox(vm, req.Config, podIp)
-	} else {
+	vm := v.createVM(req.Config, podIp)
+
+	if !v.amiPod { // Traditional Pod, but within a VM
+		ret, err := v.bootSandbox(vm, req.Config, podIp)
+
+		if err == nil { //i.e. boot succeeded
+			handleElasticIP(req.Config, vm.GetName())
+		}
+
+		return ret, err
+	} else { // Booting a VM immage to appear as a Pod to K8s.  Can't boot it until container time
 		providerData := &podData{}
 
 		client, err := common.CreateFakeClient()
 		if err != nil { // Currently should be impossible to fail
-			return nil, fmt.Errorf("")
+			return nil, err
 		}
 
 		booted := false
@@ -221,6 +214,7 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 	}
 }
 
+// FIXME: if booting a VM here fails, do we want to fail the whole pod?
 func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
 	data.BootLock.Lock()
 	defer data.BootLock.Unlock()
@@ -257,6 +251,8 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 		return fmt.Errorf("PreCreateContainer: couldn't boot VM: %v", err)
 	}
 
+	handleElasticIP(req.GetSandboxConfig(), vm.GetName())
+
 	data.Booted = true
 
 	data.Client = newPodData.Client
@@ -270,13 +266,7 @@ func (v *awsPodProvider) StopPodSandbox(podData *common.PodData) {}
 func (v *awsPodProvider) RemovePodSandbox(data *common.PodData) {
 	glog.Infof("RemovePodSandbox: release IP: %v", data.Ip)
 
-	err := delRoute(v.config.RouteTable, data.Ip)
-	if err != nil {
-		awsErr := err.(awserr.Error)
-		glog.Warningf("RemovePodSandbox: delRoute failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
-	} else {
-		v.ipList.Append(data.Ip)
-	}
+	v.ipList.Append(data.Ip)
 }
 
 func (v *awsPodProvider) PodSandboxStatus(podData *common.PodData) {}
@@ -354,4 +344,45 @@ func (v *awsPodProvider) ListInstances() ([]*common.PodData, error) {
 	}
 
 	return podDatas, nil
+}
+
+func (v *awsPodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp string) *awsvm.VM {
+	aAnno := parseAWSAnnotations(config.Annotations)
+
+	vm := &awsvm.VM{
+		AMI:           v.config.Ami,
+		InstanceType:  "t2.micro",
+		Region:        v.config.Region,
+		KeyPair:       strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
+		SecurityGroup: v.config.SecurityGroup,
+		Subnet:        v.config.Subnet,
+		Volumes: []awsvm.EBSVolume{
+			{
+				DeviceName: "/dev/sda1",
+			},
+		},
+		SSHCreds: ssh.Credentials{
+			SSHUser:       "ubuntu",
+			SSHPrivateKey: v.key,
+		},
+		PrivateIPAddress: podIp,
+	}
+
+	// Fill in VM struct with data from annotations if required
+	overrideVMDefault(vm, aAnno)
+
+	return vm
+}
+
+func handleElasticIP(config *kubeapi.PodSandboxConfig, name string) {
+	aAnno := parseAWSAnnotations(config.Annotations)
+
+	// Does this VM get an associatable elastic IP?
+	if aAnno.elasticIP != "" {
+		err := attachElasticIP(&name, &aAnno.elasticIP)
+		if err != nil {
+			awsErr := err.(awserr.Error)
+			glog.Warningf("CreatePodSandbox: attaching elastic ip failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
+		}
+	}
 }

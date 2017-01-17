@@ -117,12 +117,12 @@ func GetBridgedDevices() ([]string, error) {
 
 func (vm *VM) configure() error {
 	// Delete any existing nics from the VM, will add the network cards from the passed in config
-	if err := DeleteNICs(*vm); err != nil {
+	if err := DeleteNICs(vm); err != nil {
 		return err
 	}
 
 	for _, nic := range vm.Config.NICs {
-		if err := AddNIC(*vm, nic); err != nil {
+		if err := AddNIC(vm, nic); err != nil {
 			return err
 		}
 	}
@@ -226,7 +226,7 @@ OuterLoop:
 }
 
 // DeleteNIC deletes the specified network interface on the vm.
-func DeleteNIC(vm VM, nic NIC) error {
+func DeleteNIC(vm *VM, nic NIC) error {
 	if nic.Backing == Disabled {
 		return lvm.ErrNICAlreadyDisabled
 	}
@@ -245,7 +245,7 @@ func getStringFromBacking(backing Backing) string {
 }
 
 // AddNIC adds a NIC to the VM.
-func AddNIC(vm VM, nic NIC) error {
+func AddNIC(vm *VM, nic NIC) error {
 	var err error
 	switch nic.Backing {
 	case Nat:
@@ -257,7 +257,7 @@ func AddNIC(vm VM, nic NIC) error {
 }
 
 // DeleteNICs disables all the network interfaces on the vm.
-func DeleteNICs(vm VM) error {
+func DeleteNICs(vm *VM) error {
 	nics, err := vm.GetInterfaces()
 	if err != nil {
 		return lvm.ErrFailedToGetNICS

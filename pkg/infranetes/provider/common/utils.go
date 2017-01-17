@@ -81,18 +81,25 @@ func readCgroupFileToInt64(cgroupPath, cgroupFile string) (int64, error) {
 	}
 }
 
-func ParseAnnotations(annotations map[string]string) (startProxy, createInteface, sethostname, handleRoutes bool) {
-	startProxy = true
-	createInteface = true
-	sethostname = true
-	handleRoutes = true
+type annotationConfig struct {
+	StartProxy     bool
+	CreateInteface bool
+	SetHostname    bool
+}
+
+func ParseCommonAnnotations(annotations map[string]string) *annotationConfig {
+	ret := &annotationConfig{
+		StartProxy:     true,
+		CreateInteface: true,
+		SetHostname:    true,
+	}
 
 	if a, ok := annotations["infranetes.startproxy"]; ok {
 		b, err := strconv.ParseBool(a)
 		if err != nil {
 			glog.Infof("Couldn't parse bool %v for infranetes.startproxy: %v", a, err)
 		} else {
-			startProxy = b
+			ret.StartProxy = b
 		}
 	}
 
@@ -101,7 +108,7 @@ func ParseAnnotations(annotations map[string]string) (startProxy, createInteface
 		if err != nil {
 			glog.Infof("Couldn't parse bool %v for infranetes.createinterface: %v", a, err)
 		} else {
-			createInteface = b
+			ret.CreateInteface = b
 		}
 	}
 
@@ -110,18 +117,9 @@ func ParseAnnotations(annotations map[string]string) (startProxy, createInteface
 		if err != nil {
 			glog.Infof("Couldn't parse bool %v for infranetes.sethostname: %v", a, err)
 		} else {
-			sethostname = b
+			ret.SetHostname = b
 		}
 	}
 
-	if a, ok := annotations["infranetes.handleroutes"]; ok {
-		b, err := strconv.ParseBool(a)
-		if err != nil {
-			glog.Infof("Couldn't parse bool %v for infranetes.handleroutes: %v", a, err)
-		} else {
-			handleRoutes = b
-		}
-	}
-
-	return
+	return ret
 }

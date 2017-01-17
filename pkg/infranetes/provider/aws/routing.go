@@ -46,3 +46,17 @@ func destSourceReset(instance string) error {
 
 	return err
 }
+
+func attachElasticIP(instanceID *string, elasticID *string) error {
+	req := &ec2.AssociateAddressInput{
+		AllocationId: elasticID,
+		InstanceId:   instanceID,
+	}
+
+	_, err := client.AssociateAddress(req)
+	if err != nil {
+		return fmt.Errorf("AssociateAddress failed: %v", err)
+	}
+
+	return nil
+}

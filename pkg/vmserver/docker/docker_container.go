@@ -2,7 +2,7 @@ package docker
 
 import (
 	"encoding/json"
-	"flag"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +26,6 @@ import (
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
-	"errors"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -43,31 +42,7 @@ const (
 	defaultTimeout     = 2 * time.Minute
 )
 
-type StringList []string
-
-// implement flag.Value:
-// https://golang.org/pkg/flag/#Value
-
-func (s *StringList) Set(arg string) error {
-	arr := strings.Split(arg, ",")
-
-	for _, e := range arr {
-		*s = append(*s, e)
-	}
-
-	return nil
-}
-
-func (s *StringList) String() string {
-	return fmt.Sprintf(`"%v"`, *s)
-}
-
-var (
-	mountablePaths StringList
-)
-
 func init() {
-	flag.Var(&mountablePaths, "mountablePaths", "Paths vmserver should bind mount to themselves for docker")
 	vmserver.ContainerProviders.RegisterProvider("docker", NewDockerProvider)
 }
 
@@ -96,9 +71,15 @@ func NewDockerProvider() (vmserver.ContainerProvider, error) {
 func createMountablePaths() {
 }
 
+// FIXME: A lot of things to support (ala full linux/security context)
 func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	config := req.Config
 	podSandboxID := req.GetPodSandboxId()
+
+	sharedPaths, err := processSharedPaths(config.Annotations)
+	if err != nil {
+		return nil, fmt.Errorf("ContainerCreate Failed: %v", err)
+	}
 
 	labels := common.MakeLabels(config.Labels, config.Annotations)
 	labels[containerNameLabel] = common.MakeContainerName(req.SandboxConfig, req.Config)
@@ -151,11 +132,6 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 		Labels:    labels,
 	}
 
-	sharedPaths, err := handleSharedPaths(config.Annotations)
-	if err != nil {
-		return nil, fmt.Errorf("ContainerCreate Failed: %v", err)
-	}
-
 	hostConfig := &dockercontainer.HostConfig{
 		Binds:       generateMountBindings(config.GetMounts(), sharedPaths),
 		IpcMode:     "host",
@@ -168,6 +144,20 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 		hostConfig.DNSOptions = req.SandboxConfig.DnsConfig.Options
 		hostConfig.DNSSearch = req.SandboxConfig.DnsConfig.Searches
 	}
+
+	if req.SandboxConfig.GetLinux().GetSecurityContext().GetPrivileged() {
+		hostConfig.Privileged = true
+	}
+
+	devices := make([]dockercontainer.DeviceMapping, len(config.Devices))
+	for i, device := range config.Devices {
+		devices[i] = dockercontainer.DeviceMapping{
+			PathOnHost:        device.GetHostPath(),
+			PathInContainer:   device.GetContainerPath(),
+			CgroupPermissions: device.GetPermissions(),
+		}
+	}
+	hostConfig.Resources.Devices = devices
 
 	dockResp, err := d.client.ContainerCreate(context.Background(), createConfig, hostConfig, nil, "")
 	if err != nil {
@@ -183,7 +173,7 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 	return resp, nil
 }
 
-func handleSharedPaths(annotations map[string]string) (map[string]bool, error) {
+func processSharedPaths(annotations map[string]string) (map[string]bool, error) {
 	ret := make(map[string]bool)
 	pathsString, ok := annotations["infranetes.sharedpaths"]
 	if !ok {
