@@ -30,16 +30,6 @@ func (m *VMserver) SetPodIP(ctx context.Context, req *common.SetIPRequest) (*com
 		return nil, fmt.Errorf("SetPodIP: %v is an invalid ip address", req.Ip)
 	}
 
-	if req.CreateInterface {
-		args := []string{"eth0:0", req.Ip, "netmask", "255.255.255.255"}
-
-		cmd := exec.Command("ifconfig", args...)
-		err := cmd.Run()
-		if err != nil {
-			glog.Errorf("failed to create new inteface for ip %v: %v", req.Ip, err)
-		}
-	}
-
 	m.podIp = &req.Ip
 
 	err := m.startStreamingServer()

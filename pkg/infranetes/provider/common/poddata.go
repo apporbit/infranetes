@@ -203,13 +203,13 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 }
 
 func (p *PodData) GetPodState() kubeapi.PodSandboxState {
-	if !p.Booted {
-		return kubeapi.PodSandboxState_SANDBOX_READY
-	}
-
-	//i.e. booted, but not ready, means its a goner
+	//i.e. once not ready, always not ready
 	if p.PodState == kubeapi.PodSandboxState_SANDBOX_NOTREADY {
 		return kubeapi.PodSandboxState_SANDBOX_NOTREADY
+	}
+
+	if !p.Booted { // don't update state on a not booted VM
+		return kubeapi.PodSandboxState_SANDBOX_READY
 	}
 
 	err := p.Client.Ready()

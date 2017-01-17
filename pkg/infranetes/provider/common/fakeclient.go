@@ -79,7 +79,7 @@ func (c *fakeClient) RunCmd(req *common.RunCmdRequest) error {
 	return errors.New("Fake doesn't support RunCmd")
 }
 
-func (c *fakeClient) SetPodIP(ip string, createInterface bool) error {
+func (c *fakeClient) SetPodIP(ip string) error {
 	return errors.New("Fake doesn't support SetPodIP")
 }
 

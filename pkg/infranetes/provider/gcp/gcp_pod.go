@@ -26,9 +26,7 @@ type gcpPodProvider struct {
 	ipList *utils.Deque
 }
 
-type gcePodData struct {
-	ip string
-}
+type gcePodData struct{}
 
 type gceConfig struct {
 	Zone        string
@@ -36,6 +34,7 @@ type gceConfig struct {
 	Project     string
 	Scope       string
 	AuthFile    string
+	Subnet      string
 }
 
 func NewGCPPodProvider() (provider.PodProvider, error) {
@@ -48,10 +47,15 @@ func NewGCPPodProvider() (provider.PodProvider, error) {
 
 	json.Unmarshal(file, &conf)
 
-	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" {
+	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" || conf.Subnet == "" {
 		msg := fmt.Sprintf("Failed to read in complete config file: conf = %+v", conf)
 		glog.Info(msg)
 		return nil, fmt.Errorf(msg)
+	}
+
+	// FIXME: add autodetection like AWS
+	if *flags.MasterIP == "" || *flags.IPBase == "" {
+		return nil, fmt.Errorf("GCP doesn't have autodetection yet: MasterIP = %v, IPBase = %V", *flags.MasterIP, *flags.IPBase)
 	}
 
 	ipList := utils.NewDeque()
@@ -71,13 +75,12 @@ func (*gcpPodProvider) UpdatePodState(data *common.PodData) {
 }
 
 func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxConfig, name string) (*common.PodData, error) {
-	startProxy, createInterface, setHostname, handleRoutes := common.ParseAnnotations(config.Annotations)
+	cAnno := common.ParseCommonAnnotations(config.Annotations)
 
 	if err := vm.Provision(); err != nil {
 		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
 	}
 
-	index := 1
 	ips, err := vm.GetIPs()
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
@@ -85,40 +88,13 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 
 	glog.Infof("CreatePodSandbox: ips = %v", ips)
 
-	if ips[0] == nil {
-		index = 1
-	}
+	// FIXME: Perhaps better way to choose public vs private ip
+	index := 1
+	podIp := ips[index].String()
 
-	ip := ips[index].String()
-
-	client, err := common.CreateRealClient(ip)
+	client, err := common.CreateRealClient(podIp)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
-	}
-
-	if startProxy {
-		err = client.StartProxy()
-		if err != nil {
-			client.Close()
-			glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
-		}
-	}
-
-	if setHostname {
-		err = client.SetHostname(config.GetHostname())
-		if err != nil {
-			glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
-		}
-	}
-
-	podIp := ip
-	if createInterface {
-		podIp = name
-	}
-	err = client.SetPodIP(podIp, createInterface)
-
-	if err != nil {
-		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
 	}
 
 	err = client.SetSandboxConfig(config)
@@ -126,24 +102,36 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
 	}
 
-	if handleRoutes {
-		err = addRoute(vm, podIp)
+	err = client.SetPodIP(podIp)
+	if err != nil {
+		glog.Warningf("CreatePodSandbox: Failed to configure inteface: %v", err)
+	}
+
+	if cAnno.StartProxy {
+		err = client.StartProxy()
 		if err != nil {
-			glog.Warningf("addRoute failed: %v", err)
+			client.Close()
+			glog.Warningf("CreatePodSandbox: Couldn't start kube-proxy: %v", err)
+		}
+	}
+
+	if cAnno.SetHostname {
+		err = client.SetHostname(config.GetHostname())
+		if err != nil {
+			glog.Warningf("CreatePodSandbox: couldn't set hostname to %v: %v", config.GetHostname(), err)
 		}
 	}
 
 	booted := true
 
-	locaData := &gcePodData{
-		ip: podIp,
-	}
+	locaData := &gcePodData{}
 
 	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, &locaData)
 
 	return podData, nil
 }
 
+// FIXME: add image support
 func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
 	name := "infranetes-" + req.GetConfig().GetMetadata().GetUid()
 	disk := []gcpvm.Disk{{DiskType: "pd-standard", DiskSizeGb: 10, AutoDelete: true}}
@@ -158,7 +146,7 @@ func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 		Disks:         disk,
 		Preemptible:   false,
 		Network:       "default",
-		Subnetwork:    "default",
+		Subnetwork:    v.config.Subnet,
 		UseInternalIP: false,
 		ImageProjects: []string{"engineering-lab"},
 		Project:       "engineering-lab",
@@ -169,7 +157,12 @@ func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 
 	podIp := v.ipList.Shift().(string)
 
-	return v.bootSandbox(vm, req.Config, podIp)
+	ret, err := v.bootSandbox(vm, req.Config, podIp)
+	if err == nil {
+		// FIXME: Google's version of elastic IP handling goes here
+	}
+
+	return ret, err
 }
 
 func (v *gcpPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
@@ -180,18 +173,9 @@ func (v *gcpPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 func (v *gcpPodProvider) StopPodSandbox(podData *common.PodData) {}
 
 func (v *gcpPodProvider) RemovePodSandbox(data *common.PodData) {
-	ip := data.ProviderData.(*gcePodData).ip
-	vm := data.VM.(*gcpvm.VM)
+	glog.Infof("RemovePodSandbox: release IP: %v", data.Ip)
 
-	glog.Infof("RemovePodSandbox: release IP: %v", ip)
-
-	err := delRoute(vm)
-	if err != nil {
-		glog.Warningf("del route failed: %v", err)
-		return
-	}
-
-	v.ipList.Append(ip)
+	v.ipList.Append(data.Ip)
 }
 
 func (v *gcpPodProvider) PodSandboxStatus(podData *common.PodData) {}

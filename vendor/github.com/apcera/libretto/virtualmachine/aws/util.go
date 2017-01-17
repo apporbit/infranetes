@@ -3,6 +3,7 @@
 package aws
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -34,7 +35,12 @@ const (
 // ValidCredentials sends a dummy request to AWS to check if credentials are
 // valid. An error is returned if credentials are missing or region is missing.
 func ValidCredentials(region string) error {
-	_, err := getService(region).DescribeInstances(nil)
+	svc, err := getService(region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
+
+	_, err = svc.DescribeInstances(nil)
 	awsErr, isAWS := err.(awserr.Error)
 	if !isAWS {
 		return err
@@ -130,7 +136,7 @@ func setNonRootDeleteOnDestroy(svc *ec2.EC2, instID string, delOnTerm bool) erro
 	return nil
 }
 
-func getService(region string) *ec2.EC2 {
+func getService(region string) (*ec2.EC2, error) {
 	creds := credentials.NewChainCredentials(
 		[]credentials.Provider{
 			&credentials.EnvProvider{},               // check environment
@@ -145,12 +151,17 @@ func getService(region string) *ec2.EC2 {
 		}
 	}
 
-	return ec2.New(session.New(&aws.Config{
+	s, err := session.NewSession(&aws.Config{
 		Credentials: creds,
 		Region:      &region,
-		//CredentialsChainVerboseErrors: aws.Bool(true),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
-	}))
+		CredentialsChainVerboseErrors: aws.Bool(true),
+		HTTPClient:                    &http.Client{Timeout: 30 * time.Second},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %v", err)
+	}
+
+	return ec2.New(s), nil
 }
 
 func instanceInfo(vm *VM) *ec2.RunInstancesInput {
@@ -200,6 +211,10 @@ func instanceInfo(vm *VM) *ec2.RunInstancesInput {
 			},
 		})
 	}
+	var privateIPAddress *string
+	if vm.PrivateIPAddress != "" {
+		privateIPAddress = aws.String(vm.PrivateIPAddress)
+	}
 
 	return &ec2.RunInstancesInput{
 		ImageId:             aws.String(vm.AMI),
@@ -214,6 +229,7 @@ func instanceInfo(vm *VM) *ec2.RunInstancesInput {
 		SubnetId:           sid,
 		SecurityGroupIds:   sgid,
 		IamInstanceProfile: iamInstance,
+		PrivateIpAddress:   privateIPAddress,
 	}
 }
 
@@ -223,4 +239,50 @@ func hasInstanceID(instance *ec2.Instance) bool {
 	}
 
 	return true
+}
+
+// UploadKeyPair uploads the public key to AWS with a given name.
+// If the public key already exists, then no error is returned.
+func UploadKeyPair(publicKey []byte, name string, region string) error {
+	svc, err := getService(region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
+
+	_, err = svc.ImportKeyPair(&ec2.ImportKeyPairInput{
+		KeyName:           aws.String(name),
+		PublicKeyMaterial: publicKey,
+		DryRun:            aws.Bool(false),
+	})
+	if awsErr, isAWS := err.(awserr.Error); isAWS {
+		if awsErr.Code() != "InvalidKeyPair.Duplicate" {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// DeleteKeyPair deletes the given key pair from the given region.
+func DeleteKeyPair(name string, region string) error {
+	svc, err := getService(region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
+
+	if name == "" {
+		return errors.New("Missing key pair name")
+	}
+
+	_, err = svc.DeleteKeyPair(&ec2.DeleteKeyPairInput{
+		KeyName: aws.String(name),
+		DryRun:  aws.Bool(false),
+	})
+	if err != nil {
+		return fmt.Errorf("Failed to delete key pair: %s", err)
+	}
+
+	return nil
 }

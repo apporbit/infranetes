@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/golang/glog"
+
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
@@ -38,13 +40,11 @@ func main() {
 	}
 
 	if *flags.MasterIP == "" {
-		fmt.Println("Need to specify master ip address")
-		os.Exit(1)
+		glog.Warning("Warning: MasterIP Not Set, Will try to extrapolate later")
 	}
 
 	if *flags.IPBase == "" {
-		fmt.Println("Need to specify an IPBase")
-		os.Exit(2)
+		glog.Warning("Warning: IPBase Not Set, Will try to extrapolate later")
 	}
 
 	conf := BaseConfig{

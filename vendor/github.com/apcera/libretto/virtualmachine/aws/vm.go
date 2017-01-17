@@ -13,7 +13,6 @@ import (
 	"github.com/apcera/libretto/util"
 	"github.com/apcera/libretto/virtualmachine"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
@@ -77,6 +76,7 @@ type VM struct {
 	InstanceID             string
 	KeyPair                string // required
 	IamInstanceProfileName string
+	PrivateIPAddress       string
 
 	Volumes                      []EBSVolume
 	KeepRootVolumeOnDestroy      bool
@@ -104,7 +104,10 @@ func (vm *VM) GetName() string {
 
 // SetTag adds a tag to the VM and its attached volumes.
 func (vm *VM) SetTag(key, value string) error {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
 
 	if vm.InstanceID == "" {
 		return ErrNoInstanceID
@@ -140,7 +143,10 @@ func (vm *VM) SetTag(key, value string) error {
 // if the VM takes too long to enter "running" state.
 func (vm *VM) Provision() error {
 	<-limiter
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
 
 	resp, err := svc.RunInstances(instanceInfo(vm))
 	if err != nil {
@@ -168,7 +174,11 @@ func (vm *VM) Provision() error {
 // PrivateIP consts can be used to retrieve respective IP address type. It
 // returns nil if there was an error obtaining the IPs.
 func (vm *VM) GetIPs() ([]net.IP, error) {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AWS service: %v", err)
+	}
+
 	if vm.InstanceID == "" {
 		// Probably need to call Provision first.
 		return nil, ErrNoInstanceID
@@ -204,12 +214,16 @@ func (vm *VM) GetIPs() ([]net.IP, error) {
 // Destroy terminates the VM on AWS. It returns an error if AWS credentials are
 // missing or if there is no instance ID.
 func (vm *VM) Destroy() error {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
+
 	if vm.InstanceID == "" {
 		// Probably need to call Provision first.
 		return ErrNoInstanceID
 	}
-	_, err := svc.TerminateInstances(&ec2.TerminateInstancesInput{
+	_, err = svc.TerminateInstances(&ec2.TerminateInstancesInput{
 		InstanceIds: []*string{
 			aws.String(vm.InstanceID),
 		},
@@ -222,7 +236,8 @@ func (vm *VM) Destroy() error {
 		return nil
 	}
 
-	return vm.DeleteKeyPair()
+	vm.ResetKeyPair()
+	return nil
 }
 
 // GetSSH returns an SSH client that can be used to connect to a VM. An error
@@ -249,7 +264,10 @@ func (vm *VM) GetSSH(options ssh.Options) (ssh.Client, error) {
 // returned if the instance ID is missing, if there was a problem querying AWS,
 // or if there are no instances.
 func (vm *VM) GetState() (string, error) {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return "", fmt.Errorf("failed to get AWS service: %v", err)
+	}
 
 	if vm.InstanceID == "" {
 		// Probably need to call Provision first.
@@ -277,14 +295,17 @@ func (vm *VM) GetState() (string, error) {
 
 // Halt shuts down the VM on AWS.
 func (vm *VM) Halt() error {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
 
 	if vm.InstanceID == "" {
 		// Probably need to call Provision first.
 		return ErrNoInstanceID
 	}
 
-	_, err := svc.StopInstances(&ec2.StopInstancesInput{
+	_, err = svc.StopInstances(&ec2.StopInstancesInput{
 		InstanceIds: []*string{
 			aws.String(vm.InstanceID),
 		},
@@ -300,14 +321,17 @@ func (vm *VM) Halt() error {
 
 // Start boots a stopped VM.
 func (vm *VM) Start() error {
-	svc := getService(vm.Region)
+	svc, err := getService(vm.Region)
+	if err != nil {
+		return fmt.Errorf("failed to get AWS service: %v", err)
+	}
 
 	if vm.InstanceID == "" {
 		// Probably need to call Provision first.
 		return ErrNoInstanceID
 	}
 
-	_, err := svc.StartInstances(&ec2.StartInstancesInput{
+	_, err = svc.StartInstances(&ec2.StartInstancesInput{
 		InstanceIds: []*string{
 			aws.String(vm.InstanceID),
 		},
@@ -330,52 +354,14 @@ func (vm *VM) Resume() error {
 	return ErrNoSupportResume
 }
 
-// UseKeyPair uploads the public part of a keypair to AWS with a given name
-// and sets the private part as the VM's private key. If the public key already
-// exists, then the private key will still be assigned to this VM and the error
-// will be nil.
-func (vm *VM) UseKeyPair(kp *ssh.KeyPair, name string) error {
-	if kp == nil {
-		return errors.New("Key pair can't be nil.")
-	}
-
-	svc := getService(vm.Region)
-
-	_, err := svc.ImportKeyPair(&ec2.ImportKeyPairInput{
-		KeyName:           aws.String(name),
-		PublicKeyMaterial: kp.PublicKey,
-		DryRun:            aws.Bool(false),
-	})
-	if awsErr, isAWS := err.(awserr.Error); isAWS {
-		if awsErr.Code() != "InvalidKeyPair.Duplicate" {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	vm.SSHCreds.SSHPrivateKey = string(kp.PrivateKey)
+// SetKeyPair sets the given private key and AWS key name for this vm
+func (vm *VM) SetKeyPair(privateKey string, name string) {
+	vm.SSHCreds.SSHPrivateKey = privateKey
 	vm.KeyPair = name
-
-	return nil
 }
 
-// DeleteKeyPair deletes the key pair set for this VM.
-func (vm *VM) DeleteKeyPair() error {
-	svc := getService(vm.Region)
-
-	if vm.KeyPair == "" {
-		return errors.New("Missing key pair name")
-	}
-
-	_, err := svc.DeleteKeyPair(&ec2.DeleteKeyPairInput{
-		KeyName: aws.String(vm.KeyPair),
-		DryRun:  aws.Bool(false),
-	})
-	if err != nil {
-		return fmt.Errorf("Failed to delete key pair: %s", err)
-	}
-
+// ResetKeyPair resets the key pair for this VM.
+func (vm *VM) ResetKeyPair() {
 	vm.SSHCreds.SSHPrivateKey = ""
-	return nil
+	vm.KeyPair = ""
 }
