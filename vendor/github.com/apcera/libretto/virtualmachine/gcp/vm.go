@@ -45,9 +45,10 @@ type VM struct {
 
 	Disks []Disk // At least one disk is required, the first one is booted device
 
-	Network       string
-	Subnetwork    string
-	UseInternalIP bool
+	Network          string
+	Subnetwork       string
+	UseInternalIP    bool
+	PrivateIPAddress string
 
 	Scopes  []string //Access scopes
 	Project string   //GCE project
