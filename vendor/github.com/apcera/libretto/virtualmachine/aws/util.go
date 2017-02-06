@@ -188,9 +188,11 @@ func instanceInfo(vm *VM) *ec2.RunInstancesInput {
 	}
 
 	var sgid []*string
-	if vm.SecurityGroup != "" {
-		sgid = make([]*string, 1)
-		sgid[0] = aws.String(vm.SecurityGroup)
+	if len(vm.SecurityGroups) > 0 {
+		sgid = make([]*string, 0)
+		for _, sg := range vm.SecurityGroups {
+			sgid = append(sgid, aws.String(sg))
+		}
 	}
 
 	devices := make([]*ec2.BlockDeviceMapping, len(vm.Volumes))

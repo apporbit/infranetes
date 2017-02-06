@@ -82,9 +82,9 @@ type VM struct {
 	KeepRootVolumeOnDestroy      bool
 	DeleteNonRootVolumeOnDestroy bool
 
-	VPC           string
-	Subnet        string
-	SecurityGroup string
+	VPC            string
+	Subnet         string
+	SecurityGroups []string
 
 	SSHCreds            ssh.Credentials // required
 	DeleteKeysOnDestroy bool
@@ -138,6 +138,17 @@ func (vm *VM) SetTag(key, value string) error {
 	return nil
 }
 
+// SetTags takes in a map of tags to set to the provisioned instance. This is
+// essentially a shorter way than calling SetTag many times.
+func (vm *VM) SetTags(tags map[string]string) error {
+	for k, v := range tags {
+		if err := vm.SetTag(k, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Provision creates a virtual machine on AWS. It returns an error if
 // there was a problem during creation, if there was a problem adding a tag, or
 // if the VM takes too long to enter "running" state.
@@ -165,6 +176,12 @@ func (vm *VM) Provision() error {
 
 	if vm.DeleteNonRootVolumeOnDestroy {
 		return setNonRootDeleteOnDestroy(svc, vm.InstanceID, true)
+	}
+
+	if vm.Name != "" {
+		if err := vm.SetTag("Name", vm.GetName()); err != nil {
+			return err
+		}
 	}
 
 	return nil

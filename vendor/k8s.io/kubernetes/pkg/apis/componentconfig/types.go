@@ -484,10 +484,10 @@ type KubeletConfiguration struct {
 	// and fails the mount operation fails.
 	ExperimentalCheckNodeCapabilitiesBeforeMount bool
 	// Thise flag, if set, enables kubelet to override the detected cpu and memory limits
-	ExperimentalOverrideLimits bool
+        ExperimentalOverrideLimits bool
 	// These flags, if set, work with the above Override flag to restrict the limits, otherwise they are unrestricted
-	CPULimit int64
-	MemLimit int64
+        CPULimit int64
+        MemLimit int64
 }
 
 type KubeletAuthorizationMode string

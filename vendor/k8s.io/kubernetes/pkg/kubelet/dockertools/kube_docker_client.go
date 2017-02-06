@@ -79,7 +79,7 @@ const (
 )
 
 func KubeWrapDockerclient(dockerClient *dockerapi.Client) DockerInterface {
-	return newKubeDockerClient(dockerClient, 0, 2*time.Minute)
+	return newKubeDockerClient(dockerClient, 0, 2 *time.Minute)
 }
 
 // newKubeDockerClient creates an kubeDockerClient from an existing docker client. If requestTimeout is 0,
