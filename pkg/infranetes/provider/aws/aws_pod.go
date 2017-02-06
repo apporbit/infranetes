@@ -350,12 +350,14 @@ func (v *awsPodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp string
 	aAnno := parseAWSAnnotations(config.Annotations)
 
 	vm := &awsvm.VM{
-		AMI:           v.config.Ami,
-		InstanceType:  "t2.micro",
-		Region:        v.config.Region,
-		KeyPair:       strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
-		SecurityGroup: v.config.SecurityGroup,
-		Subnet:        v.config.Subnet,
+		AMI:              v.config.Ami,
+		InstanceType:     "t2.micro",
+		Region:           v.config.Region,
+		KeyPair:          strings.TrimSuffix(filepath.Base(v.config.SshKey), filepath.Ext(v.config.SshKey)),
+		SecurityGroups:   []string{v.config.SecurityGroup},
+		Subnet:           v.config.Subnet,
+		PrivateIPAddress: podIp,
+
 		Volumes: []awsvm.EBSVolume{
 			{
 				DeviceName: "/dev/sda1",
@@ -365,7 +367,6 @@ func (v *awsPodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp string
 			SSHUser:       "ubuntu",
 			SSHPrivateKey: v.key,
 		},
-		PrivateIPAddress: podIp,
 	}
 
 	// Fill in VM struct with data from annotations if required

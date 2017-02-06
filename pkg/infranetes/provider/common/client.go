@@ -51,6 +51,7 @@ type Client interface {
 	Ready() error
 	SaveLogs(container string, path string) error
 	GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error)
+	AddRoute(req *common.AddRouteRequest) (*common.AddRouteResponse, error)
 }
 
 type RealClient struct {
@@ -288,6 +289,12 @@ func (c *RealClient) SaveLogs(container string, path string) error {
 
 func (c *RealClient) GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error) {
 	resp, err := c.vmclient.GetMetrics(context.Background(), req)
+
+	return resp, err
+}
+
+func (c *RealClient) AddRoute(req *common.AddRouteRequest) (*common.AddRouteResponse, error) {
+	resp, err := c.vmclient.AddRoute(context.Background(), req)
 
 	return resp, err
 }

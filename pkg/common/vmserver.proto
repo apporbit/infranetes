@@ -19,6 +19,7 @@ service VMServer {
     rpc SetHostname(SetHostnameRequest) returns (SetHostnameResponse) {}
     rpc Logs(LogsRequest) returns (stream LogLine) {}
     rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
+    rpc AddRoute(AddRouteRequest) returns (AddRouteResponse) {}
 }
 
 message GetMetricsRequest {
@@ -104,3 +105,10 @@ message SetHostnameRequest {
 }
 
 message SetHostnameResponse{}
+
+message AddRouteRequest {
+    string target = 1;
+    string gateway = 2;
+}
+
+message AddRouteResponse{}
