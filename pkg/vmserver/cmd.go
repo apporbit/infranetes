@@ -10,10 +10,11 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
-	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
+
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
@@ -126,4 +127,19 @@ func (m *VMserver) SetHostname(ctx context.Context, req *common.SetHostnameReque
 	err := syscall.Sethostname(bytes)
 
 	return &common.SetHostnameResponse{}, err
+}
+
+func (m *VMserver) AddRoute(ctx context.Context, req *common.AddRouteRequest) (*common.AddRouteResponse, error) {
+	glog.Infof("AddRoute: req = %+v", req)
+
+	routeCmd := "route"
+	routeArgs := []string{"add", "-net", req.Target, "gw", req.Gateway}
+
+	command := exec.Command(routeCmd, routeArgs...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("AddRoute: add route failed:\n output = %v", output)
+	}
+
+	return &common.AddRouteResponse{}, nil
 }

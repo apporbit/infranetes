@@ -117,3 +117,7 @@ func (c *fakeClient) SaveLogs(container string, path string) error {
 func (c *fakeClient) GetMetric(req *common.GetMetricsRequest) (*common.GetMetricsResponse, error) {
 	return &common.GetMetricsResponse{}, nil
 }
+
+func (c *fakeClient) AddRoute(req *common.AddRouteRequest) (*common.AddRouteResponse, error) {
+	return &common.AddRouteResponse{}, nil
+}

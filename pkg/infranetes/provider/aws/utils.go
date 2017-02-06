@@ -76,7 +76,8 @@ func overrideVMDefault(vm *awsvm.VM, anno *awsAnnotations) {
 
 	if anno.securityGroup != "" {
 		glog.Infof("ParseAWSAnnotations: booting instance security group %v", anno.securityGroup)
-		vm.SecurityGroup = anno.securityGroup
+		splits := strings.Split(anno.securityGroup, ",")
+		vm.SecurityGroups = splits
 	}
 
 	if anno.region != "" {
