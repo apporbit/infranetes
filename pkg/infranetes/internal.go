@@ -3,6 +3,7 @@ package infranetes
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/golang/glog"
 
@@ -61,7 +62,7 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 
 	client := podData.Client
 	if client == nil { // This sandbox has been stopped
-		msg := fmt.Sprintf("stopSandbox: got nil client for %s: %v", podId)
+		msg := fmt.Sprintf("stopSandbox: got nil client for %s", podId)
 		glog.Warning(msg)
 		return nil, fmt.Errorf(msg)
 	}
@@ -189,9 +190,10 @@ func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateCo
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("createContainer: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("createContainer: nil client, must be a removed pod sandbox?")
 	}
 
+	// This discovers network sharable mounts, to remount inside of VM
 	infos, err := mount.GetMounts()
 	knownMounts := make(map[string]*mount.Info)
 	if err == nil {
@@ -204,21 +206,48 @@ func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateCo
 		}
 	}
 
-	for _, mount := range req.Config.Mounts {
-		if mountInfo, ok := knownMounts[mount.GetHostPath()]; ok {
+	// How do we handle volumes?
+	for _, mnt := range req.Config.Mounts {
+		if mntpnt, ok := isFlexVolMnt(mnt.GetHostPath(), m.mountMap); ok { // Is this an infranetes supported flex volume?
+			vol := m.mountMap[mntpnt]
+
+			if podData.NeedMount(vol) { // Have we already mounted it inside the VM?
+				dev, err := podData.AttachVol(vol)
+				if err != nil {
+					glog.Warningf("CreateContainer: failed to attach volume %v for %v", vol, mntpnt)
+				} else {
+					err = client.MountFs(dev, mntpnt, "ext4", mnt.GetReadonly())
+					if err != nil {
+						glog.Warningf("CreateContainer: failed to mount device %v on %v", dev, mntpnt)
+					}
+				}
+			}
+		} else if mountInfo, ok := knownMounts[mnt.GetHostPath()]; ok { // Is this a network mountable sharable volume?
 			err = client.MountFs(mountInfo.Source, mountInfo.Mountpoint, mountInfo.Fstype, isReadOnly(mountInfo.Opts))
 			if err != nil {
 				glog.Warningf("CreateContainer: failed to mount %v on %v", mountInfo.Source, mountInfo.Mountpoint)
 			}
-		} else {
-			err = client.CopyFile(mount.GetHostPath())
+		} else { // Anything else means we copy it into VM
+			err = client.CopyFile(mnt.GetHostPath())
 			if err != nil {
-				glog.Warningf("CreateContainer: failed to copy %v", mount.GetHostPath())
+				glog.Warningf("CreateContainer: failed to copy %v", mnt.GetHostPath())
 			}
 		}
 	}
 
 	return client.CreateContainer(req)
+}
+
+func isFlexVolMnt(mount string, mounts map[string]string) (string, bool) {
+	mount += "/"
+	for m := range mounts {
+		test := m + "/"
+		if strings.HasPrefix(mount, test) {
+			return m, true
+		}
+	}
+
+	return "", false
 }
 
 func (m *Manager) listContainers(req *kubeapi.ListContainersRequest) (*kubeapi.ListContainersResponse, error) {

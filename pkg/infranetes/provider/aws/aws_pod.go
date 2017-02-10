@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/golang/glog"
 
@@ -25,7 +27,12 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
-type podData struct{}
+type podData struct {
+	instanceId  *string
+	usedDevices map[string]bool
+	attached    map[string]string
+	lock        sync.Mutex
+}
 
 type awsPodProvider struct {
 	config *awsConfig
@@ -176,7 +183,11 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 		glog.Infof("CreatePodSandbox: Skipping changing hostname")
 	}
 
-	providerData := &podData{}
+	providerData := &podData{
+		instanceId:  &vm.InstanceID,
+		usedDevices: make(map[string]bool),
+		attached:    make(map[string]string),
+	}
 
 	booted := true
 
@@ -386,4 +397,84 @@ func handleElasticIP(config *kubeapi.PodSandboxConfig, name string) {
 			glog.Warningf("CreatePodSandbox: attaching elastic ip failed: %v, code = %v, msg = %v", err.Error(), awsErr.Code(), awsErr.Message())
 		}
 	}
+}
+
+func (p *podData) Attach(vol string) (string, error) {
+	glog.Infof("Attach (aws): enter: %v", vol)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if dev, ok := p.attached[vol]; ok {
+		return dev, nil
+	}
+
+	dev := ""
+
+	for i := 'f'; i <= 'p'; i++ {
+		s := string(i)
+		if !p.usedDevices[s] {
+			p.usedDevices[s] = true
+			dev = "/dev/xvd" + s
+			break
+		}
+	}
+
+	if dev == "" {
+		glog.Errorf("Attach: Couldn't find a free device")
+		return "", errors.New("Attach: Couldn't find a free device")
+	}
+
+	glog.Infof("Attaching to %v", dev)
+	req := &ec2.AttachVolumeInput{
+		InstanceId: p.instanceId,
+		VolumeId:   &vol,
+		Device:     &dev,
+	}
+	attachResp, err := client.AttachVolume(req)
+
+	if err != nil {
+		glog.Errorf("Attach: AttachVolume failed: %v", err)
+		return "", fmt.Errorf("Attach: attach failed: %v", err)
+	}
+
+	glog.Infof("Attach: AttachVolume succeeded")
+
+	p.attached[vol] = dev
+
+	for i := 0; i < 5; i++ {
+		glog.Infof("Attach: describing volume")
+		req := &ec2.DescribeVolumesInput{
+			VolumeIds: []*string{attachResp.VolumeId},
+		}
+		descResp, err := client.DescribeVolumes(req)
+		if err != nil {
+			glog.Errorf("Attach: DescribeVolumes failed: %v", err)
+			return "", fmt.Errorf("Attach: describe failed: %v", err)
+		}
+		if len(descResp.Volumes) != 1 {
+			glog.Errorf("Attach: DescribeVolumes didn't return one volume: %+v", descResp)
+			return "", fmt.Errorf("Attach: describe didn't return any volumes")
+		}
+		if len(descResp.Volumes[0].Attachments) == 1 {
+			if "attached" == *descResp.Volumes[0].Attachments[0].State {
+				glog.Infof("Attach: success")
+				return dev, nil
+			}
+		}
+
+		glog.Infof("Attach (aws): descResp = %+v", descResp)
+		time.Sleep(5 * time.Second)
+	}
+
+	glog.Errorf("Attach: describe never showed as attached")
+	return "", fmt.Errorf("Attach: describe never showed as attached")
+}
+
+func (p *podData) NeedMount(vol string) bool {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	_, ok := p.attached[vol]
+
+	return !ok
 }

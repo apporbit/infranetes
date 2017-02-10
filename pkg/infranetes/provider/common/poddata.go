@@ -9,8 +9,14 @@ import (
 	lvm "github.com/apcera/libretto/virtualmachine"
 	"github.com/golang/glog"
 
+	"errors"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
+
+type ProviderData interface {
+	Attach(volume string) (string, error)
+	NeedMount(volume string) bool
+}
 
 type PodData struct {
 	VM           lvm.VirtualMachine
@@ -26,13 +32,13 @@ type PodData struct {
 	PodState     kubeapi.PodSandboxState
 	Booted       bool
 	BootLock     sync.Mutex
-	ProviderData interface{}
+	ProviderData ProviderData
 	ContLogs     map[string]string
 }
 
 func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
 	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, booted bool,
-	providerData interface{}) *PodData {
+	providerData ProviderData) *PodData {
 	return &PodData{
 		VM:           vm,
 		Id:           id,
@@ -239,4 +245,20 @@ func (p *PodData) GetContLogPath(cont string) (string, bool) {
 	ret, ok := p.ContLogs[cont]
 
 	return ret, ok
+}
+
+func (p *PodData) AttachVol(vol string) (string, error) {
+	if p.ProviderData == nil {
+		return "", errors.New("Attach: No Provider Data")
+	}
+
+	return p.ProviderData.Attach(vol)
+}
+
+func (p *PodData) NeedMount(vol string) bool {
+	if p.ProviderData == nil {
+		return false
+	}
+
+	return p.ProviderData.NeedMount(vol)
 }

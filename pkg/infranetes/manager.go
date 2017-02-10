@@ -34,6 +34,9 @@ type Manager struct {
 
 	vmMap     map[string]*common.PodData
 	vmMapLock sync.RWMutex
+
+	mountMap     map[string]string
+	mountMapLock sync.Mutex
 }
 
 func NewInfranetesManager(podProvider provider.PodProvider, contProvider provider.ImageProvider) (*Manager, error) {
@@ -42,6 +45,7 @@ func NewInfranetesManager(podProvider provider.PodProvider, contProvider provide
 		podProvider:  podProvider,
 		contProvider: contProvider,
 		vmMap:        make(map[string]*common.PodData),
+		mountMap:     make(map[string]string),
 	}
 
 	manager.importSandboxes()
@@ -73,6 +77,7 @@ func (s *Manager) registerServer() {
 	kubeapi.RegisterRuntimeServiceServer(s.server, s)
 	kubeapi.RegisterImageServiceServer(s.server, s)
 	icommon.RegisterMetricsServer(s.server, s)
+	icommon.RegisterMountsServer(s.server, s)
 
 }
 
@@ -535,4 +540,30 @@ func (m *Manager) GetMetrics(ctx context.Context, req *icommon.GetMetricsRequest
 	glog.Infof("GetMetrics: len of containers slice = %v", len(containers))
 
 	return resp, nil
+}
+
+func (m *Manager) AddMount(ctx context.Context, req *icommon.AddMountRequest) (*icommon.AddMountResponse, error) {
+	m.mountMapLock.Lock()
+	defer m.mountMapLock.Unlock()
+
+	if _, ok := m.mountMap[req.MountPoint]; ok {
+		return nil, fmt.Errorf("AddMount: Already added a mountpoint for %v", req.MountPoint)
+	}
+
+	m.mountMap[req.MountPoint] = req.Volume
+
+	return &icommon.AddMountResponse{}, nil
+}
+
+func (m *Manager) DelMount(ctx context.Context, req *icommon.DelMountRequest) (*icommon.DelMountResponse, error) {
+	m.mountMapLock.Lock()
+	defer m.mountMapLock.Unlock()
+
+	if _, ok := m.mountMap[req.MountPoint]; !ok {
+		return nil, fmt.Errorf("DelMount: %v doesn't exist as known mount point", req.MountPoint)
+	}
+
+	delete(m.mountMap, req.MountPoint)
+
+	return &icommon.DelMountResponse{}, nil
 }
