@@ -2,6 +2,7 @@ package gcp
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strconv"
@@ -26,7 +27,7 @@ type gcpPodProvider struct {
 	ipList *utils.Deque
 }
 
-type gcePodData struct{}
+type podData struct{}
 
 type gceConfig struct {
 	Zone        string
@@ -124,9 +125,9 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 
 	booted := true
 
-	locaData := &gcePodData{}
+	providerData := &podData{}
 
-	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, &locaData)
+	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }
@@ -183,4 +184,13 @@ func (v *gcpPodProvider) PodSandboxStatus(podData *common.PodData) {}
 func (v *gcpPodProvider) ListInstances() ([]*common.PodData, error) {
 	//FIXME: Implement - Needs tagging
 	return nil, nil
+}
+
+func (p *podData) Attach(vol string) (string, error) {
+	return "", errors.New("Attach: Not implemented yet")
+}
+
+func (p *podData) NeedMount(vol string) bool {
+	// FIXME: not implemented yet
+	return false
 }

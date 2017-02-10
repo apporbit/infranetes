@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"strings"
@@ -150,7 +151,7 @@ func (v *vspherePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*
 }
 
 func (v *vspherePodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
-	//FIXME: will when image support is added
+	//FIXME: image support to be added
 	return nil
 }
 
@@ -245,4 +246,13 @@ func (v *vspherePodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp st
 	// overrideVMDefault(vm, aAnno)
 
 	return vm
+}
+
+func (p *podData) Attach(vol string) (string, error) {
+	return "", errors.New("Attach: Not implemented yet")
+}
+
+func (p *podData) NeedMount(vol string) bool {
+	// FIXME: not implemented yet
+	return false
 }

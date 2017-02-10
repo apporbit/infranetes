@@ -6,6 +6,11 @@ service Metrics {
     rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
 }
 
+service Mounts {
+    rpc AddMount(AddMountRequest) returns (AddMountResponse) {}
+    rpc DelMount(DelMountRequest) returns (DelMountResponse) {}
+}
+
 service VMServer {
     //rpc UploadFiles(File) returns (UploadResponse) {}
     rpc StartProxy(StartProxyRequest) returns (StartProxyResponse) {}
@@ -20,6 +25,7 @@ service VMServer {
     rpc Logs(LogsRequest) returns (stream LogLine) {}
     rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
     rpc AddRoute(AddRouteRequest) returns (AddRouteResponse) {}
+
 }
 
 message GetMetricsRequest {
@@ -112,3 +118,16 @@ message AddRouteRequest {
 }
 
 message AddRouteResponse{}
+
+message AddMountRequest {
+    string volume = 1;
+    string mountPoint = 2;
+}
+
+message AddMountResponse{}
+
+message DelMountRequest {
+    string mountPoint = 1;
+}
+
+message DelMountResponse{}

@@ -105,7 +105,11 @@ func (m *VMserver) MountFs(ctx context.Context, req *common.MountFsRequest) (*co
 	if req.ReadOnly {
 		rw = "ro"
 	}
-	mountArgs := []string{"-t", req.Fstype, "-o", rw, req.Source, req.Target}
+	mountArgs := []string{}
+	if req.Fstype != "" {
+		mountArgs = append(mountArgs, "-t", req.Fstype)
+	}
+	mountArgs = append(mountArgs, "-o", rw, req.Source, req.Target)
 
 	err := os.MkdirAll(req.Target, 0755)
 	if err != nil {
