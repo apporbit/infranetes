@@ -1,7 +1,5 @@
 package vmserver
 
-// +build ignore
-
 import (
 	"golang.org/x/net/context"
 
