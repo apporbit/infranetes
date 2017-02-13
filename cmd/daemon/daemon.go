@@ -27,7 +27,7 @@ func main() {
 	reader := unit.Serialize(myUnit)
 	outBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
-		fmt.Errorf("ioutil.ReadAll failed: %v\n", err)
+		fmt.Printf("ioutil.ReadAll failed: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -36,7 +36,7 @@ func main() {
 	cmd := exec.Command("systemctl", "daemon-reload")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Errorf("cmd %v failed to run: %v\n", cmd, output)
+		fmt.Printf("cmd %v failed to run: %v\n", cmd, output)
 		os.Exit(1)
 	}
 }
