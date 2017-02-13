@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/sjpotter/infranetes/cmd/tests/bulk/api"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 	"io/ioutil"
 	"net"
 	"os"
+
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+
+	"github.com/sjpotter/infranetes/cmd/tests/bulk/api"
 )
 
 type bulkServer struct{}
