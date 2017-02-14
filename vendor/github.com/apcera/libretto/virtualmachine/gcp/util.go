@@ -300,7 +300,7 @@ func (svc *googleService) provision() error {
 				},
 				Network:    network.SelfLink,
 				Subnetwork: subnetworkSelfLink,
-				NetworkIP: svc.vm.PrivateIPAddress,
+				NetworkIP:  svc.vm.PrivateIPAddress,
 			},
 		},
 		Scheduling: &googlecloud.Scheduling{
