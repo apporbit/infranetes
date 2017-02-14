@@ -2175,6 +2175,11 @@
 			"Rev": "cf9e164f24cf2d45823ebdc3b9a2d068b45cc783"
 		},
 		{
+			"ImportPath": "k8s.io/kubernetes/pkg/volume/flexvolume",
+			"Comment": "v1.6.0-alpha.0-2425-gcf9e164",
+			"Rev": "cf9e164f24cf2d45823ebdc3b9a2d068b45cc783"
+		},
+		{
 			"ImportPath": "k8s.io/kubernetes/pkg/volume/util",
 			"Comment": "v1.6.0-alpha.0-2425-gcf9e164",
 			"Rev": "cf9e164f24cf2d45823ebdc3b9a2d068b45cc783"
