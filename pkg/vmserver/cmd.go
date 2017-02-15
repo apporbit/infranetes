@@ -99,12 +99,15 @@ func (m *VMserver) CopyFile(ctx context.Context, req *common.CopyFileRequest) (*
 }
 
 func (m *VMserver) MountFs(ctx context.Context, req *common.MountFsRequest) (*common.MountFsResponse, error) {
-	glog.Infof("MountFS: Attempint to mount %v on %v with readonly = %v", req.Source, req.Target, req.ReadOnly)
+	glog.Infof("MountFS: Attemping to mount %v on %v with readonly = %v", req.Source, req.Target, req.ReadOnly)
+
 	mountCmd := "/bin/mount"
+
 	rw := "rw"
 	if req.ReadOnly {
 		rw = "ro"
 	}
+
 	mountArgs := []string{}
 	if req.Fstype != "" {
 		mountArgs = append(mountArgs, "-t", req.Fstype)
@@ -119,10 +122,26 @@ func (m *VMserver) MountFs(ctx context.Context, req *common.MountFsRequest) (*co
 	command := exec.Command(mountCmd, mountArgs...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("MountFs: mount failed:\n output = %v", output)
+		return nil, fmt.Errorf("MountFs: mount failed: output = %v", output)
 	}
 
-	return &common.MountFsResponse{}, err
+	return &common.MountFsResponse{}, nil
+}
+
+func (m *VMserver) UnmountFs(ctx context.Context, req *common.UnmountFsRequest) (*common.UnmountFsResponse, error) {
+	glog.Infof("UnmountFs: Attempting to unmount %v", req.Target)
+
+	umountCmd := "/bin/umount"
+
+	umountArgs := []string{req.Target}
+
+	command := exec.Command(umountCmd, umountArgs...)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("UmountFs: umount failed: output = %v", output)
+	}
+
+	return &common.UnmountFsResponse{}, nil
 }
 
 func (m *VMserver) SetHostname(ctx context.Context, req *common.SetHostnameRequest) (*common.SetHostnameResponse, error) {

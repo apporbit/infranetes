@@ -9,6 +9,7 @@ import (
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
@@ -49,7 +50,7 @@ func (*vboxProvider) UpdatePodState(cPodData *common.PodData) {
 	cPodData.UpdatePodState()
 }
 
-func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems []*types.Volume) (*common.PodData, error) {
 	config := virtualbox.Config{
 		NICs: []virtualbox.NIC{
 			{Idx: 1, Backing: virtualbox.Bridged, BackingDevice: v.netDevice},

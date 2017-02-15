@@ -10,12 +10,14 @@ import (
 	"github.com/golang/glog"
 
 	gcpvm "github.com/apcera/libretto/virtualmachine/gcp"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 	"github.com/sjpotter/infranetes/pkg/utils"
+
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 func init() {
@@ -56,7 +58,7 @@ func NewGCPPodProvider() (provider.PodProvider, error) {
 
 	// FIXME: add autodetection like AWS
 	if *flags.MasterIP == "" || *flags.IPBase == "" {
-		return nil, fmt.Errorf("GCP doesn't have autodetection yet: MasterIP = %v, IPBase = %V", *flags.MasterIP, *flags.IPBase)
+		return nil, fmt.Errorf("GCP doesn't have autodetection yet: MasterIP = %v, IPBase = %v", *flags.MasterIP, *flags.IPBase)
 	}
 
 	ipList := utils.NewDeque()
@@ -133,7 +135,7 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 }
 
 // FIXME: add image support
-func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems []*types.Volume) (*common.PodData, error) {
 	name := "infranetes-" + req.GetConfig().GetMetadata().GetUid()
 	disk := []gcpvm.Disk{{DiskType: "pd-standard", DiskSizeGb: 10, AutoDelete: true}}
 
@@ -186,7 +188,7 @@ func (v *gcpPodProvider) ListInstances() ([]*common.PodData, error) {
 	return nil, nil
 }
 
-func (p *podData) Attach(vol string) (string, error) {
+func (p *podData) Attach(vol, device string) (string, error) {
 	return "", errors.New("Attach: Not implemented yet")
 }
 

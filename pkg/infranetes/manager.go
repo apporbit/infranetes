@@ -18,6 +18,7 @@ import (
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
@@ -32,11 +33,12 @@ type Manager struct {
 	podProvider  provider.PodProvider
 	contProvider provider.ImageProvider
 
-	vmMap     map[string]*common.PodData
+	vmMap     map[string]*common.PodData //maps internal pod sandbox id to PodData
 	vmMapLock sync.RWMutex
 
 	mountMap     map[string]string
 	mountMapLock sync.Mutex
+	volumeMap    map[string][]*types.Volume
 }
 
 func NewInfranetesManager(podProvider provider.PodProvider, contProvider provider.ImageProvider) (*Manager, error) {
@@ -45,6 +47,7 @@ func NewInfranetesManager(podProvider provider.PodProvider, contProvider provide
 		podProvider:  podProvider,
 		contProvider: contProvider,
 		vmMap:        make(map[string]*common.PodData),
+		volumeMap:    make(map[string][]*types.Volume),
 		mountMap:     make(map[string]string),
 	}
 
@@ -546,11 +549,24 @@ func (m *Manager) AddMount(ctx context.Context, req *icommon.AddMountRequest) (*
 	m.mountMapLock.Lock()
 	defer m.mountMapLock.Unlock()
 
-	if _, ok := m.mountMap[req.MountPoint]; ok {
-		return nil, fmt.Errorf("AddMount: Already added a mountpoint for %v", req.MountPoint)
+	// FIXME: this block should eventually be removed
+	if req.MountPoint != "" {
+		if _, ok := m.mountMap[req.MountPoint]; ok {
+			return nil, fmt.Errorf("AddMount: Already added a mountpoint for %v", req.MountPoint)
+		}
+
+		m.mountMap[req.MountPoint] = req.Volume
 	}
 
-	m.mountMap[req.MountPoint] = req.Volume
+	vol := &types.Volume{
+		Volume:     req.Volume,
+		MountPoint: req.MountPoint,
+		FsType:     req.FsType,
+		ReadOnly:   req.ReadOnly,
+		Device:     req.Device,
+	}
+
+	m.volumeMap[req.PodUUID] = append(m.volumeMap[req.PodUUID], vol)
 
 	return &icommon.AddMountResponse{}, nil
 }

@@ -45,6 +45,7 @@ type Client interface {
 	GetSandboxConfig() (*kubeapi.PodSandboxConfig, error)
 	CopyFile(file string) error
 	MountFs(source string, target string, fstype string, readOnly bool) error
+	UnmountFs(target string) error
 	SetHostname(hostname string) error
 	Close()
 	Version() (*kubeapi.VersionResponse, error)
@@ -242,6 +243,16 @@ func (c *RealClient) MountFs(source string, target string, fstype string, readOn
 	}
 
 	_, err := c.vmclient.MountFs(context.Background(), req)
+
+	return err
+}
+
+func (c *RealClient) UnmountFs(target string) error {
+	req := &common.UnmountFsRequest{
+		Target: target,
+	}
+
+	_, err := c.vmclient.UnmountFs(context.Background(), req)
 
 	return err
 }

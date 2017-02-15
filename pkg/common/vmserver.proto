@@ -21,6 +21,7 @@ service VMServer {
     rpc GetSandboxConfig(GetSandboxConfigRequest) returns (GetSandboxConfigResponse) {}
     rpc CopyFile(CopyFileRequest) returns (CopyFileResponse) {}
     rpc MountFs(MountFsRequest) returns (MountFsResponse) {}
+    rpc UnmountFs(UnmountFsRequest) returns (UnmountFsResponse) {}
     rpc SetHostname(SetHostnameRequest) returns (SetHostnameResponse) {}
     rpc Logs(LogsRequest) returns (stream LogLine) {}
     rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse) {}
@@ -106,6 +107,12 @@ message MountFsRequest {
 
 message MountFsResponse{}
 
+message UnmountFsRequest {
+    string target = 1;
+}
+
+message UnmountFsResponse {}
+
 message SetHostnameRequest {
     string hostname = 1;
 }
@@ -122,6 +129,10 @@ message AddRouteResponse{}
 message AddMountRequest {
     string volume = 1;
     string mountPoint = 2;
+    string fsType = 3;
+    string device = 4;
+    bool readOnly = 5;
+    string podUUID = 6;
 }
 
 message AddMountResponse{}

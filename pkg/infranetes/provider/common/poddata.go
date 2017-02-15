@@ -2,7 +2,7 @@ package common
 
 import (
 	"fmt"
-	"runtime"
+	//	"runtime"
 	"sync"
 	"time"
 
@@ -14,7 +14,7 @@ import (
 )
 
 type ProviderData interface {
-	Attach(volume string) (string, error)
+	Attach(volume, device string) (string, error)
 	NeedMount(volume string) bool
 }
 
@@ -57,70 +57,73 @@ func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetad
 }
 
 func (p *PodData) Lock() {
-	if glog.V(10) {
-		glog.Infof("podData.Lock(): pre state = %v", p.stateLock)
-	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		if glog.V(10) {
-			glog.Infof("podData.Lock() called from %s#%d\n", file, no)
+	/*	if glog.V(10) {
+			glog.Infof("podData.Lock(): pre state = %v", p.stateLock)
 		}
-	}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("podData.Lock() called from %s#%d\n", file, no)
+			}
+		} */
 
 	p.stateLock.Lock()
-	if glog.V(10) {
+	/*	if glog.V(10) {
 		glog.Infof("podData.Lock(): post state = %v", p.stateLock)
-	}
+	} */
 }
 
 func (p *PodData) Unlock() {
-	if glog.V(10) {
-		glog.Infof("podData.Unlock(): pre state = %v", p.stateLock)
-	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		if glog.V(10) {
-			glog.Infof("podData.Unlock(): called from %s#%d\n", file, no)
+	/*	if glog.V(10) {
+			glog.Infof("podData.Unlock(): pre state = %v", p.stateLock)
 		}
-	}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("podData.Unlock(): called from %s#%d\n", file, no)
+			}
+		} */
 	p.stateLock.Unlock()
-	if glog.V(10) {
+
+	/*	if glog.V(10) {
 		glog.Infof("podData.Unlock(): post state = %v", p.stateLock)
-	}
+	} */
 }
 
 func (p *PodData) RLock() {
-	if glog.V(10) {
-		glog.Infof("podData.RLock(): pre state = %v", p.stateLock)
-	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		if glog.V(10) {
-			glog.Infof("podData.RLock() called from %s#%d\n", file, no)
+	/*	if glog.V(10) {
+			glog.Infof("podData.RLock(): pre state = %v", p.stateLock)
 		}
-	}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("podData.RLock() called from %s#%d\n", file, no)
+			}
+		} */
 
 	p.stateLock.RLock()
-	if glog.V(10) {
+
+	/*	if glog.V(10) {
 		glog.Infof("podData.RLock(): post state = %v", p.stateLock)
-	}
+	} */
 }
 
 func (p *PodData) RUnlock() {
-	if glog.V(10) {
-		glog.Infof("podData.RUnlock(): pre state = %v", p.stateLock)
-	}
-	_, file, no, ok := runtime.Caller(1)
-	if ok {
-		if glog.V(10) {
-			glog.Infof("podData.RUnlock() called from %s#%d\n", file, no)
+	/*	if glog.V(10) {
+			glog.Infof("podData.RUnlock(): pre state = %v", p.stateLock)
 		}
-	}
+		_, file, no, ok := runtime.Caller(1)
+		if ok {
+			if glog.V(10) {
+				glog.Infof("podData.RUnlock() called from %s#%d\n", file, no)
+			}
+		} */
 
 	p.stateLock.RUnlock()
-	if glog.V(10) {
+
+	/*	if glog.V(10) {
 		glog.Infof("podData.RUnlock(): post state = %v", p.stateLock)
-	}
+	} */
 }
 
 /* Expect StateLock to already be taken */
@@ -252,7 +255,7 @@ func (p *PodData) AttachVol(vol string) (string, error) {
 		return "", errors.New("Attach: No Provider Data")
 	}
 
-	return p.ProviderData.Attach(vol)
+	return p.ProviderData.Attach(vol, "")
 }
 
 func (p *PodData) NeedMount(vol string) bool {

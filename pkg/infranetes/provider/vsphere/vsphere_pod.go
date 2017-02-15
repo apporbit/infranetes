@@ -14,6 +14,7 @@ import (
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
@@ -143,7 +144,7 @@ func (p *vspherePodProvider) bootSandbox(vm *vsvm.VM, config *kubeapi.PodSandbox
 	return podData, nil
 }
 
-func (v *vspherePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (v *vspherePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems []*types.Volume) (*common.PodData, error) {
 	podIp := ""
 	vm := v.createVM(req.Config, podIp)
 
@@ -248,7 +249,7 @@ func (v *vspherePodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp st
 	return vm
 }
 
-func (p *podData) Attach(vol string) (string, error) {
+func (p *podData) Attach(vol, device string) (string, error) {
 	return "", errors.New("Attach: Not implemented yet")
 }
 
