@@ -32,7 +32,9 @@ func (m *Manager) importSandboxes() {
 func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.RunPodSandboxResponse, error) {
 	resp := &kubeapi.RunPodSandboxResponse{}
 
-	podData, err := m.podProvider.RunPodSandbox(req)
+	volumes := m.volumeMap[*req.Config.Metadata.Uid]
+
+	podData, err := m.podProvider.RunPodSandbox(req, volumes)
 	if err == nil {
 		m.vmMapLock.Lock()
 		defer m.vmMapLock.Unlock()
@@ -103,6 +105,9 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 	podData.Lock()
 	defer podData.Unlock()
 
+	sandboxId := req.GetPodSandboxId()
+	uuid := *podData.Metadata.Uid
+
 	if err := podData.VM.Destroy(); err != nil {
 		return fmt.Errorf("removePodSandbox: %v", err)
 	}
@@ -113,7 +118,8 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 	m.vmMapLock.Lock()
 	defer m.vmMapLock.Unlock()
 
-	delete(m.vmMap, req.GetPodSandboxId())
+	delete(m.vmMap, sandboxId)
+	delete(m.volumeMap, uuid)
 
 	return nil
 }
@@ -208,6 +214,7 @@ func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateCo
 
 	// How do we handle volumes?
 	for _, mnt := range req.Config.Mounts {
+		// FIXME: flexvolume support will probably be removed from here
 		if mntpnt, ok := isFlexVolMnt(mnt.GetHostPath(), m.mountMap); ok { // Is this an infranetes supported flex volume?
 			vol := m.mountMap[mntpnt]
 
@@ -241,6 +248,10 @@ func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateCo
 func isFlexVolMnt(mount string, mounts map[string]string) (string, bool) {
 	mount += "/"
 	for m := range mounts {
+		if m == "" {
+			continue
+		}
+
 		test := m + "/"
 		if strings.HasPrefix(mount, test) {
 			return m, true

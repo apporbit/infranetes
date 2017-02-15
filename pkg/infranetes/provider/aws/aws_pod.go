@@ -22,6 +22,7 @@ import (
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 	"github.com/sjpotter/infranetes/pkg/utils"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
@@ -32,6 +33,7 @@ type podData struct {
 	usedDevices map[string]bool
 	attached    map[string]string
 	lock        sync.Mutex
+	volumes     []*types.Volume
 }
 
 type awsPodProvider struct {
@@ -119,7 +121,8 @@ func (*awsPodProvider) UpdatePodState(data *common.PodData) {
 	}
 }
 
-func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, name string) (*common.PodData, error) {
+// FIXME: if steps fail, probably want to teardown VM
+func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxConfig, name string, volumes []*types.Volume) (*common.PodData, error) {
 	// 1. Parse Annotations from PodSandboxConfig
 	cAnno := common.ParseCommonAnnotations(config.Annotations)
 
@@ -133,24 +136,46 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 	// 3. Extract IP Info
 	ips, err := vm.GetIPs()
 	if err != nil {
-		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
+		return nil, fmt.Errorf("bootSandbox: error in GetIPs(): %v", err)
 	}
 
-	glog.Infof("CreatePodSandbox: ips = %v", ips)
+	glog.Infof("bootSandbox: ips = %v", ips)
 
 	// FIXME: Perhaps better way to choose public vs private ip
 	index := 1
 	podIp := ips[index].String()
 
-	glog.Infof("CreatePodSandbox: podIp = %v", podIp)
+	glog.Infof("bootSandbox: podIp = %v", podIp)
 
 	// 4. Connect to VMServer in VM
 	client, err := common.CreateRealClient(podIp)
 	if err != nil {
-		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
+		return nil, fmt.Errorf("bootSandbox: error in createClient(): %v", err)
 	}
 
-	// 5. Setup Instance / VM Correctly
+	providerData := &podData{
+		instanceId:  &vm.InstanceID,
+		usedDevices: make(map[string]bool),
+		attached:    make(map[string]string),
+		volumes:     volumes,
+	}
+
+	// 5. Attach/Mount EBS Volumes
+	for _, vol := range volumes {
+		device, err := providerData.Attach(vol.Volume, vol.Device)
+		if err != nil {
+			glog.Warningf("bootSandbox: failed to attach %v to %v in %v", vol.Volume, device, vm.InstanceID)
+		} else {
+			if vol.MountPoint != "" {
+				err := client.MountFs(device, vol.MountPoint, vol.FsType, vol.ReadOnly)
+				if err != nil {
+					glog.Warningf("bootSandbox: failed to mount %v(%v) on %v in %v", vol.Volume, device, vol.MountPoint, vm.InstanceID)
+				}
+			}
+		}
+	}
+
+	// 6. Setup Instaunce / VM Correctly
 	// Store Config so can be recovered if neccessary
 	err = client.SetSandboxConfig(config)
 	if err != nil {
@@ -183,12 +208,6 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 		glog.Infof("CreatePodSandbox: Skipping changing hostname")
 	}
 
-	providerData := &podData{
-		instanceId:  &vm.InstanceID,
-		usedDevices: make(map[string]bool),
-		attached:    make(map[string]string),
-	}
-
 	booted := true
 
 	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
@@ -196,13 +215,13 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 	return podData, nil
 }
 
-func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volumes []*types.Volume) (*common.PodData, error) {
 	podIp := v.ipList.Shift().(string)
 
 	vm := v.createVM(req.Config, podIp)
 
 	if !v.amiPod { // Traditional Pod, but within a VM
-		ret, err := v.bootSandbox(vm, req.Config, podIp)
+		ret, err := v.bootSandbox(vm, req.Config, podIp, volumes)
 
 		if err == nil { //i.e. boot succeeded
 			handleElasticIP(req.Config, vm.GetName())
@@ -210,7 +229,8 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 
 		return ret, err
 	} else { // Booting a VM immage to appear as a Pod to K8s.  Can't boot it until container time
-		providerData := &podData{}
+		//FIXME: make generic later
+		providerData := &podData{volumes: volumes}
 
 		client, err := common.CreateFakeClient()
 		if err != nil { // Currently should be impossible to fail
@@ -229,6 +249,12 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*comm
 func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
 	data.BootLock.Lock()
 	defer data.BootLock.Unlock()
+
+	// FIXME: this should be made something that is passed into function later so don't have to do this for every pod provider
+	var volumes []*types.Volume
+	if providerData, ok := data.ProviderData.(*podData); ok {
+		volumes = providerData.volumes
+	}
 
 	// This function is really only for when amiPod == true and this pod hasn't been booted yet (i.e. only one container)
 	// The below check enforces that.  Errors out if more than one "container" is used for an amiPod and just returns if not an amiPod
@@ -257,7 +283,7 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", *req.Config.Image.Image, err, result)
 	}
 
-	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip)
+	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip, volumes)
 	if err != nil {
 		return fmt.Errorf("PreCreateContainer: couldn't boot VM: %v", err)
 	}
@@ -272,7 +298,31 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 	return nil
 }
 
-func (v *awsPodProvider) StopPodSandbox(podData *common.PodData) {}
+func (v *awsPodProvider) StopPodSandbox(pdata *common.PodData) {
+	providerData, ok := pdata.ProviderData.(*podData)
+	providerData.lock.Lock()
+	defer providerData.lock.Unlock()
+
+	if !ok {
+		glog.Warningf("StopPodSandbox: couldn't type assert ProviderData to podData")
+		return
+	}
+
+	for _, vol := range providerData.volumes {
+		if vol.MountPoint != "" {
+			err := pdata.Client.UnmountFs(vol.MountPoint)
+			if err != nil {
+				glog.Warningf("StopPodSandbox: couldn't unmount %v on %v", vol.MountPoint, *providerData.instanceId)
+			}
+		}
+		err := providerData.detach(vol.Volume, true)
+		if err != nil {
+			glog.Warningf("StopPodSandbox: couldn't detach %v from %v", vol.Volume, *providerData.instanceId)
+		}
+	}
+
+	providerData.volumes = nil
+}
 
 func (v *awsPodProvider) RemovePodSandbox(data *common.PodData) {
 	glog.Infof("RemovePodSandbox: release IP: %v", data.Ip)
@@ -399,29 +449,60 @@ func handleElasticIP(config *kubeapi.PodSandboxConfig, name string) {
 	}
 }
 
-func (p *podData) Attach(vol string) (string, error) {
-	glog.Infof("Attach (aws): enter: %v", vol)
+func (p *podData) detach(vol string, force bool) error {
+	glog.Infof("detach: enter: vol = %v", vol)
+
+	req := &ec2.DetachVolumeInput{
+		InstanceId: p.instanceId,
+		VolumeId:   &vol,
+		Force:      &force,
+	}
+
+	_, err := client.DetachVolume(req)
+	if err != nil {
+		return fmt.Errorf("detach: %v", err)
+	}
+
+	return nil
+}
+
+func (p *podData) Attach(vol, device string) (string, error) {
+	glog.Infof("Attach: enter: vol = %v, device = %v", vol, device)
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
 	if dev, ok := p.attached[vol]; ok {
-		return dev, nil
-	}
-
-	dev := ""
-
-	for i := 'f'; i <= 'p'; i++ {
-		s := string(i)
-		if !p.usedDevices[s] {
-			p.usedDevices[s] = true
-			dev = "/dev/xvd" + s
-			break
+		if device != "" && dev == device {
+			return dev, nil
+		} else {
+			return "", fmt.Errorf("Attach: tried to attach %v to %v but already attached to %v", vol, device, dev)
 		}
 	}
 
+	dev := ""
+	if device != "" {
+		c := string(device[len(device)-1])
+		if p.usedDevices[c] {
+			return "", fmt.Errorf("Attach: tried to attach %v to %v, but already used", vol, device)
+		}
+		p.usedDevices[c] = true
+		dev = device
+	}
+
 	if dev == "" {
-		glog.Errorf("Attach: Couldn't find a free device")
-		return "", errors.New("Attach: Couldn't find a free device")
+		for i := 'f'; i <= 'p'; i++ {
+			s := string(i)
+			if !p.usedDevices[s] {
+				p.usedDevices[s] = true
+				dev = "/dev/xvd" + s
+				break
+			}
+		}
+
+		if dev == "" {
+			glog.Errorf("Attach: Couldn't find a free device")
+			return "", errors.New("Attach: Couldn't find a free device")
+		}
 	}
 
 	glog.Infof("Attaching to %v", dev)
@@ -441,7 +522,7 @@ func (p *podData) Attach(vol string) (string, error) {
 
 	p.attached[vol] = dev
 
-	for i := 0; i < 5; i++ {
+	for i := 1; i <= 10; i++ {
 		glog.Infof("Attach: describing volume")
 		req := &ec2.DescribeVolumesInput{
 			VolumeIds: []*string{attachResp.VolumeId},
@@ -463,7 +544,7 @@ func (p *podData) Attach(vol string) (string, error) {
 		}
 
 		glog.Infof("Attach (aws): descResp = %+v", descResp)
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(i) * time.Second)
 	}
 
 	glog.Errorf("Attach: describe never showed as attached")

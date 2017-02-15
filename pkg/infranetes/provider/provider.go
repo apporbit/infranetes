@@ -4,12 +4,13 @@ import (
 	"fmt"
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
 )
 
 type PodProvider interface {
-	RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error)
+	RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volumes []*types.Volume) (*common.PodData, error)
 	StopPodSandbox(podData *common.PodData)
 	RemovePodSandbox(podData *common.PodData)
 	PodSandboxStatus(podData *common.PodData)

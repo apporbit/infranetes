@@ -7,6 +7,7 @@ import (
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 	"github.com/sjpotter/infranetes/pkg/utils"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
@@ -38,7 +39,7 @@ func NewFakePodProvider() (provider.PodProvider, error) {
 
 func (p *fakePodProvider) SetBootAtRun(boot bool) {}
 
-func (p *fakePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest) (*common.PodData, error) {
+func (p *fakePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems []*types.Volume) (*common.PodData, error) {
 	name := "fake-" + utils.RandString(10)
 	vm := &fakeVM{
 		name: name,

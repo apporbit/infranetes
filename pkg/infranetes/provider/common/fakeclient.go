@@ -103,6 +103,10 @@ func (c *fakeClient) MountFs(source string, target string, fstype string, readOn
 	return nil
 }
 
+func (c *fakeClient) UnmountFs(target string) error {
+	return nil
+}
+
 func (c *fakeClient) SetHostname(hostname string) error {
 	return errors.New("Fake doesn't support RunCmd")
 }
