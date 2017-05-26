@@ -538,7 +538,7 @@ func (m *Manager) GetMetrics(ctx context.Context, req *icommon.GetMetricsRequest
 		if err == nil {
 			containers = append(containers, resp.JsonMetricResponses...)
 		} else {
-			glog.Warningf("Couldn't get metrics for %v: %v", *podData.Id, err)
+			glog.Warningf("Couldn't get metrics for %v: %v", podData.Id, err)
 		}
 	}
 

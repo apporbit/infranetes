@@ -20,7 +20,7 @@ type ProviderData interface {
 
 type PodData struct {
 	VM           lvm.VirtualMachine
-	Id           *string
+	Id           string
 	Metadata     *kubeapi.PodSandboxMetadata
 	Annotations  map[string]string
 	Labels       map[string]string
@@ -36,7 +36,7 @@ type PodData struct {
 	ContLogs     map[string]string
 }
 
-func NewPodData(vm lvm.VirtualMachine, id *string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
+func NewPodData(vm lvm.VirtualMachine, id string, meta *kubeapi.PodSandboxMetadata, anno map[string]string,
 	labels map[string]string, ip string, linux *kubeapi.LinuxPodSandboxConfig, client Client, booted bool,
 	providerData ProviderData) *PodData {
 	return &PodData{
@@ -151,17 +151,15 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 		},
 	}
 
-	state := p.GetPodState()
-
 	status := &kubeapi.PodSandboxStatus{
-		Id:          *p.Id,
+		Id:          p.Id,
 		CreatedAt:   p.CreatedAt,
 		Metadata:    p.Metadata,
 		Network:     network,
 		Linux:       linux,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,
-		State:       state,
+		State:       p.GetPodState(),
 	}
 
 	return status
@@ -173,7 +171,7 @@ func (p *PodData) Filter(filter *kubeapi.PodSandboxFilter) (bool, string) {
 	}
 
 	if filter != nil {
-		if filter.Id != "" && filter.GetId() != *p.Id {
+		if filter.Id != "" && filter.GetId() != p.Id {
 			return true, fmt.Sprintf("doesn't match %v", filter.GetId())
 		}
 
@@ -200,7 +198,7 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 
 	return &kubeapi.PodSandbox{
 		CreatedAt:   p.CreatedAt,
-		Id:          *p.Id,
+		Id:          p.Id,
 		Metadata:    p.Metadata,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,

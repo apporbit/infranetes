@@ -139,7 +139,7 @@ func (p *vspherePodProvider) bootSandbox(vm *vsvm.VM, config *kubeapi.PodSandbox
 
 	booted := true
 
-	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+	podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }
@@ -208,7 +208,7 @@ func (v *vspherePodProvider) ListInstances() ([]*common.PodData, error) {
 
 		glog.Infof("ListInstances: creating a podData for %v", name)
 		booted := true
-		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+		podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 		podDatas = append(podDatas, podData)
 	}

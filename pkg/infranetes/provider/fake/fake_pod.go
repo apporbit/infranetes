@@ -48,7 +48,7 @@ func (p *fakePodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volue
 	client, _ := common.CreateFakeClient()
 	podIp := p.ipList.Shift().(string)
 	booted := true
-	podData := common.NewPodData(vm, &vm.name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, nil)
+	podData := common.NewPodData(vm, vm.name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, nil)
 
 	p.instances[name] = podData
 
