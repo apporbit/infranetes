@@ -25,7 +25,7 @@ func (m *Manager) importSandboxes() {
 	defer m.vmMapLock.Unlock()
 
 	for _, podData := range podDatas {
-		m.vmMap[*podData.Id] = podData
+		m.vmMap[podData.Id] = podData
 	}
 }
 
@@ -39,9 +39,9 @@ func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.Run
 		m.vmMapLock.Lock()
 		defer m.vmMapLock.Unlock()
 
-		m.vmMap[*podData.Id] = podData
+		m.vmMap[podData.Id] = podData
 
-		resp.PodSandboxId = *podData.Id
+		resp.PodSandboxId = podData.Id
 	}
 
 	return resp, err
@@ -149,7 +149,7 @@ func (m *Manager) listPodSandbox(req *kubeapi.ListPodSandboxRequest) (*kubeapi.L
 	for _, podData := range m.copyVMMap() {
 		// podData lock is taken and released in filter
 		if sandbox, ok := m.filter(podData, req.Filter); ok {
-			glog.V(1).Infof("listPodSandbox Appending a sandbox for %v to sandboxes", *podData.Id)
+			glog.V(1).Infof("listPodSandbox Appending a sandbox for %v to sandboxes", podData.Id)
 			sandboxes = append(sandboxes, sandbox)
 		}
 	}
@@ -167,10 +167,10 @@ func (m *Manager) filter(podData *common.PodData, reqFilter *kubeapi.PodSandboxF
 	podData.RLock()
 	defer podData.RUnlock()
 
-	glog.V(1).Infof("filter: podData for %v = %+v", *podData.Id, podData)
+	glog.V(1).Infof("filter: podData for %v = %+v", podData.Id, podData)
 
 	if filter, msg := podData.Filter(reqFilter); filter {
-		glog.V(1).Infof("filter: filtering out %v on labels as %v", *podData.Id, msg)
+		glog.V(1).Infof("filter: filtering out %v on labels as %v", podData.Id, msg)
 		return nil, false
 	}
 
@@ -285,7 +285,7 @@ func listSandbox(req *kubeapi.ListContainersRequest, podData *common.PodData) ([
 	if req.Filter != nil {
 		sandboxId = req.Filter.GetPodSandboxId()
 	}
-	if sandboxId != "" && sandboxId != *podData.Id {
+	if sandboxId != "" && sandboxId != podData.Id {
 		return nil, false
 	}
 

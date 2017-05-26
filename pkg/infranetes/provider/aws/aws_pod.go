@@ -210,7 +210,7 @@ func (p *awsPodProvider) bootSandbox(vm *awsvm.VM, config *kubeapi.PodSandboxCon
 
 	booted := true
 
-	podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+	podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }
@@ -239,7 +239,7 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volume
 
 		booted := false
 
-		podData := common.NewPodData(vm, &podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, providerData)
+		podData := common.NewPodData(vm, podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, providerData)
 
 		return podData, nil
 	}
@@ -399,7 +399,7 @@ func (v *awsPodProvider) ListInstances() ([]*common.PodData, error) {
 
 		glog.Infof("ListInstances: creating a podData for %v", name)
 		booted := true
-		podData := common.NewPodData(vm, &name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+		podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 		podDatas = append(podDatas, podData)
 	}

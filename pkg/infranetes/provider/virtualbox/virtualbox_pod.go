@@ -79,7 +79,7 @@ func (v *vboxProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems 
 
 	name := vm.GetName()
 	booted := true
-	podData := common.NewPodData(vm, &name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, booted, nil)
+	podData := common.NewPodData(vm, name, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, ip, req.Config.Linux, client, booted, nil)
 
 	return podData, nil
 }
