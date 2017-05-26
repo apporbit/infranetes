@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type systemdProvider struct {
@@ -117,16 +117,16 @@ func (p *systemdProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (
 	//4. bind mount things into place
 
 	for _, mount := range req.Config.Mounts {
-		info, _ := os.Stat(*mount.HostPath)
+		info, _ := os.Stat(mount.HostPath)
 		if info.IsDir() {
-			os.MkdirAll(*mount.ContainerPath, 0755)
+			os.MkdirAll(mount.ContainerPath, 0755)
 		} else {
-			dir := filepath.Dir(*mount.HostPath)
+			dir := filepath.Dir(mount.HostPath)
 			os.MkdirAll(dir, 0755)
-			os.Create(*mount.ContainerPath)
+			os.Create(mount.ContainerPath)
 		}
 
-		err := syscall.Mount(*mount.HostPath, *mount.ContainerPath, "", syscall.MS_BIND, "")
+		err := syscall.Mount(mount.HostPath, mount.ContainerPath, "", syscall.MS_BIND, "")
 		if err != nil {
 			glog.Warningf("CreateContainer: bind mount of %v to %v failed: %v", mount.HostPath, mount.ContainerPath, err)
 		}
@@ -135,7 +135,7 @@ func (p *systemdProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (
 	//5. generate container data
 	id := req.GetPodSandboxId() + ":" + name
 	p.contMap[id] = common.NewContainer(&id,
-		req.PodSandboxId,
+		&req.PodSandboxId,
 		kubeapi.ContainerState_CONTAINER_CREATED,
 		req.Config.Metadata,
 		req.Config.Image,
@@ -143,7 +143,7 @@ func (p *systemdProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (
 		req.Config.Labels,
 		req.Config.Annotations)
 
-	return &kubeapi.CreateContainerResponse{ContainerId: &id}, nil
+	return &kubeapi.CreateContainerResponse{ContainerId: id}, nil
 }
 
 func (p *systemdProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
@@ -232,7 +232,7 @@ func filter(filter *kubeapi.ContainerFilter, cont *common.Container) bool {
 			return true
 		}
 
-		if filter.GetState() == cont.GetState() {
+		if filter.GetState().State == cont.GetState() {
 			glog.Infof("Filtering out %v as want %v and got %v", *cont.GetId(), filter.GetState(), cont.GetState())
 			return true
 		}
@@ -277,7 +277,7 @@ func (f *systemdProvider) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecS
 	var code int32
 	code = 0
 	ret := &kubeapi.ExecSyncResponse{
-		ExitCode: &code,
+		ExitCode: code,
 	}
 
 	return ret, nil

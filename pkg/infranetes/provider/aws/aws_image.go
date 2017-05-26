@@ -14,7 +14,7 @@ import (
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type awsImageProvider struct {
@@ -70,10 +70,10 @@ func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
 	}
 
 	return &kubeapi.Image{
-		Id:          image.ImageId,
+		Id:          *image.ImageId,
 		RepoTags:    []string{*name},
 		RepoDigests: []string{*image.ImageId},
-		Size_:       &size,
+		Size_:       size,
 	}, nil
 }
 
@@ -84,7 +84,7 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 	result := []*kubeapi.Image{}
 
 	if req.Filter != nil && req.Filter.Image != nil {
-		if image, ok := p.imageMap[*req.Filter.Image.Image]; ok {
+		if image, ok := p.imageMap[req.Filter.Image.Image]; ok {
 			result = append(result, image)
 		}
 	} else {
@@ -101,11 +101,11 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 }
 
 func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
-	name := *req.Image.Image
+	name := req.Image.Image
 
 	if len(strings.Split(name, ":")) == 1 {
 		name += ":latest"
-		req.Image.Image = &name
+		req.Image.Image = name
 	}
 
 	newreq := &kubeapi.ListImagesRequest{
@@ -132,7 +132,7 @@ func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeap
 func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
 	ec2Req := &ec2.DescribeImagesInput{}
 
-	splits := strings.Split(*req.Image.Image, "/")
+	splits := strings.Split(req.Image.Image, "/")
 	switch len(splits) {
 	case 1:
 		ec2Req.Owners = []*string{aws.String("self")}
@@ -143,7 +143,7 @@ func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pu
 		ec2Req.Filters = []*ec2.Filter{{Name: aws.String("tag:infranetes.image_name"), Values: []*string{&splits[1]}}}
 		break
 	default:
-		return nil, fmt.Errorf("PullImage: can't parse %v", *req.Image.Image)
+		return nil, fmt.Errorf("PullImage: can't parse %v", req.Image.Image)
 	}
 
 	ec2Results, err := client.DescribeImages(ec2Req)
@@ -153,7 +153,7 @@ func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pu
 
 	switch len(ec2Results.Images) {
 	case 0:
-		return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", *req.Image.Image)
+		return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", req.Image.Image)
 	case 1:
 		p.lock.Lock()
 		defer p.lock.Unlock()
@@ -161,7 +161,7 @@ func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pu
 		if err != nil {
 			return nil, fmt.Errorf("PullImage: toRuntimeAPIImage failed: %v", err)
 		}
-		p.imageMap[*req.Image.Image] = image
+		p.imageMap[req.Image.Image] = image
 
 		return &kubeapi.PullImageResponse{}, nil
 	default:
@@ -173,7 +173,7 @@ func (p *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeap
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	delete(p.imageMap, *req.Image.Image)
+	delete(p.imageMap, req.Image.Image)
 
 	return &kubeapi.RemoveImageResponse{}, nil
 }

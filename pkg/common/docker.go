@@ -12,7 +12,7 @@ import (
 	dockertypes "github.com/docker/engine-api/types"
 	dockerfilters "github.com/docker/engine-api/types/filters"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 func GenerateEnvList(envs []*kubeapi.KeyValue) (result []string) {
@@ -95,11 +95,11 @@ func ToRuntimeAPIContainer(podId string, name string, c *dockertypes.Container) 
 
 	labels, annotations := ExtractLabels(c.Labels)
 	return &kubeapi.Container{
-		Id:          &id,
+		Id:          id,
 		Metadata:    metadata,
-		Image:       &kubeapi.ImageSpec{Image: &c.Image},
-		ImageRef:    &c.ImageID,
-		State:       &state,
+		Image:       &kubeapi.ImageSpec{Image: c.Image},
+		ImageRef:    c.ImageID,
+		State:       state,
 		Labels:      labels,
 		Annotations: annotations,
 	}, nil
@@ -146,8 +146,8 @@ func ParseContainerName(name string) (*kubeapi.ContainerMetadata, error) {
 	}
 
 	return &kubeapi.ContainerMetadata{
-		Name:    &parts[1],
-		Attempt: &attempt,
+		Name:    parts[1],
+		Attempt: attempt,
 	}, nil
 }
 
@@ -215,9 +215,9 @@ func ToRuntimeAPIImage(image *dockertypes.Image) (*kubeapi.Image, error) {
 
 	size := uint64(image.VirtualSize)
 	return &kubeapi.Image{
-		Id:          &image.ID,
+		Id:          image.ID,
 		RepoTags:    image.RepoTags,
 		RepoDigests: image.RepoDigests,
-		Size_:       &size,
+		Size_:       size,
 	}, nil
 }

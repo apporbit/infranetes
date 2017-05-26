@@ -1,6 +1,7 @@
 package common
 
 import (
+	"errors"
 	"fmt"
 	//	"runtime"
 	"sync"
@@ -9,8 +10,7 @@ import (
 	lvm "github.com/apcera/libretto/virtualmachine"
 	"github.com/golang/glog"
 
-	"errors"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type ProviderData interface {
@@ -142,14 +142,11 @@ func (p *PodData) RemovePod() error {
 
 func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 	network := &kubeapi.PodSandboxNetworkStatus{
-		Ip: &p.Ip,
+		Ip: p.Ip,
 	}
-
-	net := "host"
 
 	linux := &kubeapi.LinuxPodSandboxStatus{
 		Namespaces: &kubeapi.Namespace{
-			Network: &net,
 			Options: p.Linux.SecurityContext.NamespaceOptions,
 		},
 	}
@@ -157,14 +154,14 @@ func (p *PodData) PodStatus() *kubeapi.PodSandboxStatus {
 	state := p.GetPodState()
 
 	status := &kubeapi.PodSandboxStatus{
-		Id:          p.Id,
-		CreatedAt:   &p.CreatedAt,
+		Id:          *p.Id,
+		CreatedAt:   p.CreatedAt,
 		Metadata:    p.Metadata,
 		Network:     network,
 		Linux:       linux,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,
-		State:       &state,
+		State:       state,
 	}
 
 	return status
@@ -176,11 +173,11 @@ func (p *PodData) Filter(filter *kubeapi.PodSandboxFilter) (bool, string) {
 	}
 
 	if filter != nil {
-		if filter.Id != nil && filter.GetId() != *p.Id {
+		if filter.Id != "" && filter.GetId() != *p.Id {
 			return true, fmt.Sprintf("doesn't match %v", filter.GetId())
 		}
 
-		if filter.State != nil && filter.GetState() != p.PodState {
+		if filter.State != nil && filter.GetState().State != p.PodState {
 			return true, fmt.Sprintf("want %v and got %v", filter.GetState(), p.PodState)
 		}
 
@@ -202,12 +199,12 @@ func (p *PodData) GetSandbox() *kubeapi.PodSandbox {
 	state := p.GetPodState()
 
 	return &kubeapi.PodSandbox{
-		CreatedAt:   &p.CreatedAt,
-		Id:          p.Id,
+		CreatedAt:   p.CreatedAt,
+		Id:          *p.Id,
 		Metadata:    p.Metadata,
 		Labels:      p.Labels,
 		Annotations: p.Annotations,
-		State:       &state,
+		State:       state,
 	}
 }
 

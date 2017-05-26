@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2014-2016 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 package list
 
 import (
+	"context"
 	"fmt"
 	"path"
 	"reflect"
@@ -25,12 +26,15 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 type Element struct {
 	Path   string
 	Object mo.Reference
+}
+
+func (e Element) String() string {
+	return fmt.Sprintf("%s @ %s", e.Object.Reference(), e.Path)
 }
 
 func ToElement(r mo.Reference, prefix string) Element {
@@ -79,9 +83,13 @@ func ToElement(r mo.Reference, prefix string) Element {
 	// Network entity folders on an ESXi host can contain only Network objects.
 	case mo.Network:
 		name = m.Name
+	case mo.OpaqueNetwork:
+		name = m.Name
 	case mo.DistributedVirtualSwitch:
 		name = m.Name
 	case mo.DistributedVirtualPortgroup:
+		name = m.Name
+	case mo.VmwareDistributedVirtualSwitch:
 		name = m.Name
 
 	// { "vim.Datastore" } - Identifies a datastore folder. Datastore folders can
@@ -106,20 +114,6 @@ type Lister struct {
 	Reference types.ManagedObjectReference
 	Prefix    string
 	All       bool
-}
-
-func traversable(ref types.ManagedObjectReference) bool {
-	switch ref.Type {
-	case "Folder":
-	case "Datacenter":
-	case "ComputeResource", "ClusterComputeResource":
-		// Treat ComputeResource and ClusterComputeResource as one and the same.
-		// It doesn't matter from the perspective of the lister.
-	default:
-		return false
-	}
-
-	return true
 }
 
 func (l Lister) retrieveProperties(ctx context.Context, req types.RetrieveProperties, dst *[]interface{}) error {
@@ -167,6 +161,10 @@ func (l Lister) List(ctx context.Context) ([]Element, error) {
 		return l.ListComputeResource(ctx)
 	case "ResourcePool":
 		return l.ListResourcePool(ctx)
+	case "HostSystem":
+		return l.ListHostSystem(ctx)
+	case "VirtualApp":
+		return l.ListVirtualApp(ctx)
 	default:
 		return nil, fmt.Errorf("cannot traverse type " + l.Reference.Type)
 	}
@@ -193,11 +191,13 @@ func (l Lister) ListFolder(ctx context.Context) ([]Element, error) {
 	childTypes := []string{
 		"Folder",
 		"Datacenter",
+		"VirtualApp",
 		"VirtualMachine",
 		"Network",
 		"ComputeResource",
 		"ClusterComputeResource",
 		"Datastore",
+		"DistributedVirtualSwitch",
 	}
 
 	for _, t := range childTypes {
@@ -212,6 +212,8 @@ func (l Lister) ListFolder(ctx context.Context) ([]Element, error) {
 
 			// Additional basic properties.
 			switch t {
+			case "Folder":
+				pspec.PathSet = append(pspec.PathSet, "childType")
 			case "ComputeResource", "ClusterComputeResource":
 				// The ComputeResource and ClusterComputeResource are dereferenced in
 				// the ResourcePoolFlag. Make sure they always have their resourcePool
@@ -273,7 +275,7 @@ func (l Lister) ListDatacenter(ctx context.Context) ([]Element, error) {
 	if l.All {
 		pspec.All = types.NewBool(true)
 	} else {
-		pspec.PathSet = []string{"name"}
+		pspec.PathSet = []string{"name", "childType"}
 	}
 
 	req := types.RetrieveProperties{
@@ -387,6 +389,138 @@ func (l Lister) ListResourcePool(ctx context.Context) ([]Element, error) {
 
 	childTypes := []string{
 		"ResourcePool",
+	}
+
+	var pspecs []types.PropertySpec
+	for _, t := range childTypes {
+		pspec := types.PropertySpec{
+			Type: t,
+		}
+
+		if l.All {
+			pspec.All = types.NewBool(true)
+		} else {
+			pspec.PathSet = []string{"name"}
+		}
+
+		pspecs = append(pspecs, pspec)
+	}
+
+	req := types.RetrieveProperties{
+		SpecSet: []types.PropertyFilterSpec{
+			{
+				ObjectSet: []types.ObjectSpec{ospec},
+				PropSet:   pspecs,
+			},
+		},
+	}
+
+	var dst []interface{}
+
+	err := l.retrieveProperties(ctx, req, &dst)
+	if err != nil {
+		return nil, err
+	}
+
+	es := []Element{}
+	for _, v := range dst {
+		es = append(es, ToElement(v.(mo.Reference), l.Prefix))
+	}
+
+	return es, nil
+}
+
+func (l Lister) ListHostSystem(ctx context.Context) ([]Element, error) {
+	ospec := types.ObjectSpec{
+		Obj:  l.Reference,
+		Skip: types.NewBool(true),
+	}
+
+	fields := []string{
+		"datastore",
+		"network",
+		"vm",
+	}
+
+	for _, f := range fields {
+		tspec := types.TraversalSpec{
+			Path: f,
+			Skip: types.NewBool(false),
+			Type: "HostSystem",
+		}
+
+		ospec.SelectSet = append(ospec.SelectSet, &tspec)
+	}
+
+	childTypes := []string{
+		"Datastore",
+		"Network",
+		"VirtualMachine",
+	}
+
+	var pspecs []types.PropertySpec
+	for _, t := range childTypes {
+		pspec := types.PropertySpec{
+			Type: t,
+		}
+
+		if l.All {
+			pspec.All = types.NewBool(true)
+		} else {
+			pspec.PathSet = []string{"name"}
+		}
+
+		pspecs = append(pspecs, pspec)
+	}
+
+	req := types.RetrieveProperties{
+		SpecSet: []types.PropertyFilterSpec{
+			{
+				ObjectSet: []types.ObjectSpec{ospec},
+				PropSet:   pspecs,
+			},
+		},
+	}
+
+	var dst []interface{}
+
+	err := l.retrieveProperties(ctx, req, &dst)
+	if err != nil {
+		return nil, err
+	}
+
+	es := []Element{}
+	for _, v := range dst {
+		es = append(es, ToElement(v.(mo.Reference), l.Prefix))
+	}
+
+	return es, nil
+}
+
+func (l Lister) ListVirtualApp(ctx context.Context) ([]Element, error) {
+	ospec := types.ObjectSpec{
+		Obj:  l.Reference,
+		Skip: types.NewBool(true),
+	}
+
+	fields := []string{
+		"resourcePool",
+		"vm",
+	}
+
+	for _, f := range fields {
+		tspec := types.TraversalSpec{
+			Path: f,
+			Skip: types.NewBool(false),
+			Type: "VirtualApp",
+		}
+
+		ospec.SelectSet = append(ospec.SelectSet, &tspec)
+	}
+
+	childTypes := []string{
+		"ResourcePool",
+		"VirtualMachine",
 	}
 
 	var pspecs []types.PropertySpec

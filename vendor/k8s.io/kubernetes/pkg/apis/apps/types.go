@@ -17,8 +17,8 @@ limitations under the License.
 package apps
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/api"
-	metav1 "k8s.io/kubernetes/pkg/apis/meta/v1"
 )
 
 // +genclient=true
@@ -32,7 +32,7 @@ import (
 type StatefulSet struct {
 	metav1.TypeMeta
 	// +optional
-	api.ObjectMeta
+	metav1.ObjectMeta
 
 	// Spec defines the desired identities of pods in this set.
 	// +optional
@@ -43,6 +43,21 @@ type StatefulSet struct {
 	// +optional
 	Status StatefulSetStatus
 }
+
+// PodManagementPolicyType defines the policy for creating pods under a stateful set.
+type PodManagementPolicyType string
+
+const (
+	// OrderedReadyPodManagement will create pods in strictly increasing order on
+	// scale up and strictly decreasing order on scale down, progressing only when
+	// the previous pod is ready or terminated. At most one pod will be changed
+	// at any time.
+	OrderedReadyPodManagement PodManagementPolicyType = "OrderedReady"
+	// ParallelPodManagement will create and delete pods as soon as the stateful set
+	// replica count is changed, and will not wait for pods to be ready or complete
+	// termination.
+	ParallelPodManagement = "Parallel"
+)
 
 // A StatefulSetSpec is the specification of a StatefulSet.
 type StatefulSetSpec struct {
@@ -56,7 +71,7 @@ type StatefulSetSpec struct {
 
 	// Selector is a label query over pods that should match the replica count.
 	// If empty, defaulted to labels on the pod template.
-	// More info: http://kubernetes.io/docs/user-guide/labels#label-selectors
+	// More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
 	// +optional
 	Selector *metav1.LabelSelector
 
@@ -82,11 +97,22 @@ type StatefulSetSpec struct {
 	// pattern: pod-specific-string.serviceName.default.svc.cluster.local
 	// where "pod-specific-string" is managed by the StatefulSet controller.
 	ServiceName string
+
+	// PodManagementPolicy controls how pods are created during initial scale up,
+	// when replacing pods on nodes, or when scaling down. The default policy is
+	// `OrderedReady`, where pods are created in increasing order (pod-0, then
+	// pod-1, etc) and the controller will wait until each pod is ready before
+	// continuing. When scaling down, the pods are removed in the opposite order.
+	// The alternative policy is `Parallel` which will create pods in parallel
+	// to match the desired scale without waiting, and on scale down will delete
+	// all pods at once.
+	// +optional
+	PodManagementPolicy PodManagementPolicyType
 }
 
 // StatefulSetStatus represents the current state of a StatefulSet.
 type StatefulSetStatus struct {
-	// most recent generation observed by this autoscaler.
+	// most recent generation observed by this StatefulSet.
 	// +optional
 	ObservedGeneration *int64
 

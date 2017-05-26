@@ -3,6 +3,7 @@
 package gcp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,7 +54,7 @@ func (vm *VM) getService() (*googleService, error) {
 			Scopes:     vm.Scopes,
 			TokenURL:   tokenURL,
 		}
-		client = config.Client(oauth2.NoContext)
+		client = config.Client(context.Background())
 	} else {
 		client = &http.Client{
 			Timeout: time.Duration(30 * time.Second),

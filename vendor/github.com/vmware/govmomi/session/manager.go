@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,15 +17,28 @@ limitations under the License.
 package session
 
 import (
+	"context"
 	"net/url"
+	"os"
 
 	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
+
+// Locale defaults to "en_US" and can be overridden via this var or the GOVMOMI_LOCALE env var.
+// A value of "_" uses the server locale setting.
+var Locale = os.Getenv("GOVMOMI_LOCALE")
+
+func init() {
+	if Locale == "_" {
+		Locale = ""
+	} else if Locale == "" {
+		Locale = "en_US"
+	}
+}
 
 type Manager struct {
 	client      *vim25.Client
@@ -44,9 +57,20 @@ func (sm Manager) Reference() types.ManagedObjectReference {
 	return *sm.client.ServiceContent.SessionManager
 }
 
+func (sm *Manager) SetLocale(ctx context.Context, locale string) error {
+	req := types.SetLocale{
+		This:   sm.Reference(),
+		Locale: locale,
+	}
+
+	_, err := methods.SetLocale(ctx, sm.client, &req)
+	return err
+}
+
 func (sm *Manager) Login(ctx context.Context, u *url.Userinfo) error {
 	req := types.Login{
-		This: sm.Reference(),
+		This:   sm.Reference(),
+		Locale: Locale,
 	}
 
 	if u != nil {
@@ -117,6 +141,16 @@ func (sm *Manager) UserSession(ctx context.Context) (*types.UserSession, error) 
 	return mgr.CurrentSession, nil
 }
 
+func (sm *Manager) TerminateSession(ctx context.Context, sessionId []string) error {
+	req := types.TerminateSession{
+		This:      sm.Reference(),
+		SessionId: sessionId,
+	}
+
+	_, err := methods.TerminateSession(ctx, sm.client, &req)
+	return err
+}
+
 // SessionIsActive checks whether the session that was created at login is
 // still valid. This function only works against vCenter.
 func (sm *Manager) SessionIsActive(ctx context.Context) (bool, error) {
@@ -145,6 +179,20 @@ func (sm *Manager) AcquireGenericServiceTicket(ctx context.Context, spec types.B
 	}
 
 	res, err := methods.AcquireGenericServiceTicket(ctx, sm.client, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return &res.Returnval, nil
+}
+
+func (sm *Manager) AcquireLocalTicket(ctx context.Context, userName string) (*types.SessionManagerLocalTicket, error) {
+	req := types.AcquireLocalTicket{
+		This:     sm.Reference(),
+		UserName: userName,
+	}
+
+	res, err := methods.AcquireLocalTicket(ctx, sm.client, &req)
 	if err != nil {
 		return nil, err
 	}

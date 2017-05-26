@@ -7,7 +7,7 @@ import (
 
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type fakeExecProvider struct {
@@ -17,7 +17,7 @@ func (f *fakeExecProvider) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.Exec
 	var code int32
 	code = 0
 	ret := &kubeapi.ExecSyncResponse{
-		ExitCode: &code,
+		ExitCode: code,
 	}
 
 	return ret, nil

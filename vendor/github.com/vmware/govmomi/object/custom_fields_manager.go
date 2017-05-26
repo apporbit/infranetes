@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 package object
 
 import (
+	"context"
 	"errors"
 	"strconv"
 
@@ -24,7 +25,6 @@ import (
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 var (
@@ -69,7 +69,7 @@ func (m CustomFieldsManager) Add(ctx context.Context, name string, moType string
 	return &res.Returnval, nil
 }
 
-func (m CustomFieldsManager) Remove(ctx context.Context, key int) error {
+func (m CustomFieldsManager) Remove(ctx context.Context, key int32) error {
 	req := types.RemoveCustomFieldDef{
 		This: m.Reference(),
 		Key:  key,
@@ -79,7 +79,7 @@ func (m CustomFieldsManager) Remove(ctx context.Context, key int) error {
 	return err
 }
 
-func (m CustomFieldsManager) Rename(ctx context.Context, key int, name string) error {
+func (m CustomFieldsManager) Rename(ctx context.Context, key int32, name string) error {
 	req := types.RenameCustomFieldDef{
 		This: m.Reference(),
 		Key:  key,
@@ -90,7 +90,7 @@ func (m CustomFieldsManager) Rename(ctx context.Context, key int, name string) e
 	return err
 }
 
-func (m CustomFieldsManager) Set(ctx context.Context, entity types.ManagedObjectReference, key int, value string) error {
+func (m CustomFieldsManager) Set(ctx context.Context, entity types.ManagedObjectReference, key int32, value string) error {
 	req := types.SetField{
 		This:   m.Reference(),
 		Entity: entity,
@@ -113,7 +113,7 @@ func (m CustomFieldsManager) Field(ctx context.Context) ([]types.CustomFieldDef,
 	return fm.Field, nil
 }
 
-func (m CustomFieldsManager) FindKey(ctx context.Context, key string) (int, error) {
+func (m CustomFieldsManager) FindKey(ctx context.Context, key string) (int32, error) {
 	field, err := m.Field(ctx)
 	if err != nil {
 		return -1, err
@@ -128,7 +128,7 @@ func (m CustomFieldsManager) FindKey(ctx context.Context, key string) (int, erro
 	k, err := strconv.Atoi(key)
 	if err == nil {
 		// assume literal int key
-		return k, nil
+		return int32(k), nil
 	}
 
 	return -1, ErrKeyNameNotFound

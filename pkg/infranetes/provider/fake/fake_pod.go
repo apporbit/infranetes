@@ -10,7 +10,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 	"github.com/sjpotter/infranetes/pkg/utils"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type fakePodProvider struct {

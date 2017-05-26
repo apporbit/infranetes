@@ -8,15 +8,20 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"time"
 
 	//	"github.com/golang/glog"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/sjpotter/infranetes/pkg/common"
 	fv "k8s.io/kubernetes/pkg/volume/flexvolume"
-	"strconv"
+	"net/http"
 )
 
 // FIXME: make these configurable from a configuration file
@@ -28,10 +33,19 @@ var (
 	InfraSocket string = "/tmp/infra"
 
 	kubelexPrefix = "/var/lib/kubelet/"
+
+	instanceId = ""
+
+	formatDevice = "/dev/xvdz"
+
+	region = "us-west-2"
+
+	availZone = "us-west-2a"
 )
 
 var (
-	client common.MountsClient
+	infraClient common.MountsClient
+	ec2Client   *ec2.EC2
 )
 
 // FIXME: can't handle attach like this, as doesn't return "device"
@@ -64,7 +78,6 @@ func do_init() {
 }
 
 func do_mount(mntpnt, flexOpts string) {
-
 	// 0. json string to map
 	j := []byte(flexOpts)
 	opts := map[string]string{}
@@ -84,14 +97,33 @@ func do_mount(mntpnt, flexOpts string) {
 	}
 
 	// 2. Extract config details
-	vol := opts["volumeID"]
-	if vol == "" {
-		retErr(fv.StatusFailure, "do_mount: No volumeID")
-	}
 	dev := opts["device"]
 	fsType := opts["kubernetes.io/fsType"]
 	if fsType == "" {
 		fsType = "ext4"
+	}
+
+	vol := opts["volumeID"]
+	if vol == "" {
+		size, ok := opts["size"]
+		if !ok {
+			retErr(fv.StatusFailure, "do_mount: No volumeID and no provisionable size")
+		}
+
+		newVol, err := provision(size)
+		if !err {
+			retErr(fv.StatusFailure, fmt.Sprintf("do_mount: faile to provision volume: %v", err))
+		}
+
+		vol = *newVol
+		opts["format"] = "true"
+	}
+
+	if f, ok := opts["format"]; ok {
+		format, err := strconv.ParseBool(f)
+		if err == nil && format {
+			do_format(vol, fsType)
+		}
 	}
 
 	ro := false
@@ -129,7 +161,7 @@ func do_mount(mntpnt, flexOpts string) {
 	}
 
 	// 3. Tell infrantes about this mount
-	_, e = client.AddMount(context.Background(), req)
+	_, e = infraClient.AddMount(context.Background(), req)
 	if e != nil {
 		retErr(fv.StatusFailure, fmt.Sprintf("do_mount: Failuring adding to Infranetes: %v", e))
 	}
@@ -141,7 +173,7 @@ func do_mount(mntpnt, flexOpts string) {
 	cmd := exec.Command("mount", "-o", "loop", Iso, mntpnt)
 	output, e := cmd.CombinedOutput()
 	if e != nil {
-		client.DelMount(context.Background(), &common.DelMountRequest{MountPoint: mntpnt})
+		infraClient.DelMount(context.Background(), &common.DelMountRequest{MountPoint: mntpnt})
 		msg := fmt.Sprintf("do_mount: mntpnt: %v, flexOpts: %v: output %v", mntpnt, flexOpts, string(output))
 		retErr(fv.StatusFailure, msg)
 	}
@@ -149,9 +181,142 @@ func do_mount(mntpnt, flexOpts string) {
 	retOk()
 }
 
+func provision(size int64) (*string, error) {
+	if ec2Client == nil {
+		initEC2()
+	}
+
+	req := &ec2.CreateVolumeInput{
+		Size:             &size,
+		AvailabilityZone: &availZone,
+	}
+
+	resp, err := ec2Client.CreateVolume(req)
+	if err != nil {
+		return nil, fmt.Errorf("provision failed: %v", err)
+	}
+
+	return resp.VolumeId, nil
+
+}
+
+func do_format(vol, fsType string) error {
+	if ec2Client == nil {
+		initEC2()
+	}
+
+	if err := do_attach(vol); err != nil {
+		return fmt.Errorf("do_format: attach failed: %v", err)
+	}
+
+	switch fsType {
+	case "ext4":
+		cmd := exec.Command("mkfs.ext4", formatDevice)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("do_format: mkfs.ext4 failed: %v", string(output))
+		}
+	default:
+		return fmt.Errorf("do_format: unknown fstype: %v", fsType)
+	}
+
+	if err := do_detach(vol); err != nil {
+		return fmt.Errorf("do_format: detach failed: %v", err)
+	}
+
+	return nil
+}
+
+func do_attach(vol string) error {
+	req := &ec2.AttachVolumeInput{
+		VolumeId:   &vol,
+		Device:     &formatDevice,
+		InstanceId: &instanceId,
+	}
+
+	_, err := ec2Client.AttachVolume(req)
+	if err != nil {
+		return err
+	}
+
+	if err := wait_attach(vol); err != nil {
+		return fmt.Errorf("do_attach: attach never being active: %v", err)
+	}
+
+	return nil
+}
+
+func do_detach(vol string) error {
+	req := &ec2.DetachVolumeInput{
+		VolumeId: &vol,
+	}
+
+	_, err := ec2Client.DetachVolume(req)
+	if err != nil {
+		return err
+	}
+
+	if err := wait_detach(vol); err != nil {
+		return fmt.Errorf("do_detach: detach never succeeded: %v", err)
+	}
+
+	return nil
+}
+
+func wait_detach(vol string) error {
+	req := &ec2.DescribeVolumesInput{
+		VolumeIds: []*string{&vol},
+	}
+
+	for i := 1; i <= 5; i++ {
+		resp, err := ec2Client.DescribeVolumes(req)
+		if err != nil {
+			return err
+		}
+
+		if len(resp.Volumes) != 1 {
+			return fmt.Errorf("wait_detach: describe didn't return any volumes")
+		}
+
+		if resp.Volumes[0].State == "available" {
+			return nil
+		}
+
+		time.Sleep(time.Duration(i) * time.Second)
+	}
+
+	return fmt.Errorf("timed out waiting for volume detachment")
+}
+
+func wait_attach(vol string) error {
+	req := &ec2.DescribeVolumesInput{
+		VolumeIds: []*string{&vol},
+	}
+
+	for i := 1; i <= 5; i++ {
+		resp, err := ec2Client.DescribeVolumes(req)
+		if err != nil {
+			return err
+		}
+
+		if len(resp.Volumes) != 1 {
+			return fmt.Errorf("wait_attach: describe didn't return any volumes")
+		}
+		if len(resp.Volumes[0].Attachments) == 1 {
+			if "attached" == *resp.Volumes[0].Attachments[0].State {
+				return nil
+			}
+		}
+
+		time.Sleep(time.Duration(i) * time.Second)
+	}
+
+	return fmt.Errorf("timed out waiting for volume attachment")
+}
+
 func do_umount(mntpnt string) {
 	// FIXME: unsure DelMount matters if volumes in a pod aren't mutable
-	_, e := client.DelMount(context.Background(), &common.DelMountRequest{MountPoint: mntpnt})
+	_, e := infraClient.DelMount(context.Background(), &common.DelMountRequest{MountPoint: mntpnt})
 	if e != nil {
 		//		glog.Infof("do_umount: Failure removing from Infranetes")
 	}
@@ -179,6 +344,30 @@ func dial(file string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
+func initEC2() {
+	creds := credentials.NewChainCredentials(
+		[]credentials.Provider{
+			&credentials.EnvProvider{},               // check environment
+			&credentials.SharedCredentialsProvider{}, // check home dir
+		},
+	)
+
+	if region == "" { // user didn't set region
+		region = os.Getenv("AWS_DEFAULT_REGION") // aws cli checks this
+		if region == "" {
+			region = os.Getenv("AWS_REGION") // aws sdk checks this
+		}
+	}
+
+	ec2Client = ec2.New(session.New(&aws.Config{
+		Credentials: creds,
+		Region:      &region,
+		//CredentialsChainVerboseErrors: aws.Bool(true),
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+	}))
+
+}
+
 func main() {
 	flag.Parse()
 
@@ -191,7 +380,7 @@ func main() {
 		retErr(fv.StatusFailure, "Failed to connect to Infranetes")
 	}
 
-	client = common.NewMountsClient(grpcClient)
+	infraClient = common.NewMountsClient(grpcClient)
 
 	switch os.Args[1] {
 	case "init":

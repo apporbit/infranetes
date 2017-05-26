@@ -11,7 +11,7 @@ import (
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 func (m *Manager) importSandboxes() {
@@ -32,7 +32,7 @@ func (m *Manager) importSandboxes() {
 func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.RunPodSandboxResponse, error) {
 	resp := &kubeapi.RunPodSandboxResponse{}
 
-	volumes := m.volumeMap[*req.Config.Metadata.Uid]
+	volumes := m.volumeMap[req.Config.Metadata.Uid]
 
 	podData, err := m.podProvider.RunPodSandbox(req, volumes)
 	if err == nil {
@@ -41,7 +41,7 @@ func (m *Manager) createSandbox(req *kubeapi.RunPodSandboxRequest) (*kubeapi.Run
 
 		m.vmMap[*podData.Id] = podData
 
-		resp.PodSandboxId = podData.Id
+		resp.PodSandboxId = *podData.Id
 	}
 
 	return resp, err
@@ -80,10 +80,10 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 		timeout := int64(60)
 		contReq := &kubeapi.StopContainerRequest{
 			ContainerId: cont.Id,
-			Timeout:     &timeout,
+			Timeout:     timeout,
 		}
 		if _, err := client.StopContainer(contReq); err != nil {
-			glog.Warningf("stopSandbox: StopContainer failed in pod %s for container %s: %v", podId, *cont.Id, err)
+			glog.Warningf("stopSandbox: StopContainer failed in pod %s for container %s: %v", podId, cont.Id, err)
 			continue
 		}
 	}
@@ -106,7 +106,7 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 	defer podData.Unlock()
 
 	sandboxId := req.GetPodSandboxId()
-	uuid := *podData.Metadata.Uid
+	uuid := podData.Metadata.Uid
 
 	if err := podData.VM.Destroy(); err != nil {
 		return fmt.Errorf("removePodSandbox: %v", err)

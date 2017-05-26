@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,19 @@ limitations under the License.
 
 package object
 
+import (
+	"github.com/vmware/govmomi/vim25"
+	"github.com/vmware/govmomi/vim25/types"
+)
+
 type StoragePod struct {
 	*Folder
+}
+
+func NewStoragePod(c *vim25.Client, ref types.ManagedObjectReference) *StoragePod {
+	return &StoragePod{
+		Folder: &Folder{
+			Common: NewCommon(c, ref),
+		},
+	}
 }

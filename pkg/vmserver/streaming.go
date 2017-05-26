@@ -6,7 +6,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 func (m *VMserver) startStreamingServer() error {
@@ -29,9 +29,10 @@ func (m *VMserver) startStreamingServer() error {
 	//TODO(sjpotter): Figure out how to work with TLS?
 	config := streaming.Config{
 		Addr: addr,
-		StreamCreationTimeout: streaming.DefaultConfig.StreamCreationTimeout,
-		StreamIdleTimeout:     streaming.DefaultConfig.StreamIdleTimeout,
-		SupportedProtocols:    streaming.DefaultConfig.SupportedProtocols,
+		StreamCreationTimeout:           streaming.DefaultConfig.StreamCreationTimeout,
+		StreamIdleTimeout:               streaming.DefaultConfig.StreamIdleTimeout,
+		SupportedRemoteCommandProtocols: streaming.DefaultConfig.SupportedRemoteCommandProtocols,
+		SupportedPortForwardProtocols:   streaming.DefaultConfig.SupportedPortForwardProtocols,
 	}
 
 	streamingServer, err := streaming.NewServer(config, runtime)

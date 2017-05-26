@@ -17,8 +17,8 @@ limitations under the License.
 package componentconfig
 
 import (
-	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var (
@@ -51,7 +51,3 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	)
 	return nil
 }
-
-func (obj *KubeProxyConfiguration) GetObjectKind() schema.ObjectKind     { return &obj.TypeMeta }
-func (obj *KubeSchedulerConfiguration) GetObjectKind() schema.ObjectKind { return &obj.TypeMeta }
-func (obj *KubeletConfiguration) GetObjectKind() schema.ObjectKind       { return &obj.TypeMeta }

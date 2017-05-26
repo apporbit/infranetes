@@ -155,10 +155,9 @@ func (vm *VM) requestIPs() []net.IP {
 }
 
 func (vm *VM) waitUntilReady() error {
-	// Check if the vm already has ips before starting the vm
-	// If it does then wait until the timestamp for at least one of them changes.
-	var ips []net.IP
-	ips = vm.requestIPs()
+	// Check if the VM already has IPs before starting the VM. If it does then
+	// wait until the timestamp for at least one of the changes.
+	ips := vm.requestIPs()
 	timestamps := map[string]string{}
 	for k, v := range vm.ipUpdate {
 		timestamps[k] = v

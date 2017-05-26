@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/golang/glog"
-	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -20,7 +19,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 var (
@@ -88,10 +87,10 @@ func (s *Manager) Version(ctx context.Context, req *kubeapi.VersionRequest) (*ku
 	runtimeName := "infranetes"
 
 	resp := &kubeapi.VersionResponse{
-		RuntimeApiVersion: &runtimeAPIVersion,
-		RuntimeName:       &runtimeName,
-		RuntimeVersion:    &runtimeAPIVersion,
-		Version:           &runtimeAPIVersion,
+		RuntimeApiVersion: runtimeAPIVersion,
+		RuntimeName:       runtimeName,
+		RuntimeVersion:    runtimeAPIVersion,
+		Version:           runtimeAPIVersion,
 	}
 
 	return resp, nil
@@ -470,12 +469,12 @@ func (m *Manager) UpdateRuntimeConfig(ctx context.Context, req *kubeapi.UpdateRu
 
 func (m *Manager) Status(ctx context.Context, req *kubeapi.StatusRequest) (*kubeapi.StatusResponse, error) {
 	runtimeReady := &kubeapi.RuntimeCondition{
-		Type:   proto.String(kubeapi.RuntimeReady),
-		Status: proto.Bool(true),
+		Type:   kubeapi.RuntimeReady,
+		Status: true,
 	}
 	networkReady := &kubeapi.RuntimeCondition{
-		Type:   proto.String(kubeapi.NetworkReady),
-		Status: proto.Bool(true),
+		Type:   kubeapi.NetworkReady,
+		Status: true,
 	}
 	conditions := []*kubeapi.RuntimeCondition{runtimeReady, networkReady}
 	status := &kubeapi.RuntimeStatus{Conditions: conditions}
@@ -522,6 +521,11 @@ func (m *Manager) RemoveImage(ctx context.Context, req *kubeapi.RemoveImageReque
 	glog.Infof("RemoveImage: resp = %+v, err = %v", resp, err)
 
 	return resp, err
+}
+
+// ImageFsInfo returns information of the filesystem that is used to store images.
+func (m *Manager) ImageFsInfo(ctx context.Context, req *kubeapi.ImageFsInfoRequest) (*kubeapi.ImageFsInfoResponse, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func (m *Manager) GetMetrics(ctx context.Context, req *icommon.GetMetricsRequest) (*icommon.GetMetricsResponse, error) {

@@ -3,7 +3,7 @@ package common
 import (
 	"time"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type Container struct {
@@ -72,13 +72,13 @@ func (c *Container) ToKubeContainer() *kubeapi.Container {
 	ret := &kubeapi.Container{
 		Annotations: c.annotations,
 		//CreatedAt:    &c.createdAt,
-		Id:       c.id,
+		Id:       *c.id,
 		Image:    c.image,
 		ImageRef: c.image.Image,
 		Labels:   c.labels,
 		Metadata: c.metadata,
 		//PodSandboxId: c.podId,
-		State: &c.state,
+		State: c.state,
 	}
 
 	return ret
@@ -86,29 +86,29 @@ func (c *Container) ToKubeContainer() *kubeapi.Container {
 
 func (c *Container) ToKubeStatus() *kubeapi.ContainerStatus {
 	exitCode := int32(0)
-	var reason *string
+	var reason string
 	mounts := c.mounts
 
 	if c.state == kubeapi.ContainerState_CONTAINER_EXITED {
 		tmp := "Stopped"
-		reason = &tmp
+		reason = tmp
 		mounts = nil
 	}
 
 	ret := &kubeapi.ContainerStatus{
 		Annotations: c.annotations,
-		CreatedAt:   &c.createdAt,
-		ExitCode:    &exitCode,
-		FinishedAt:  &c.finishedAt,
-		Id:          c.id,
+		CreatedAt:   c.createdAt,
+		ExitCode:    exitCode,
+		FinishedAt:  c.finishedAt,
+		Id:          *c.id,
 		Image:       c.image,
 		ImageRef:    c.image.Image,
 		Labels:      c.labels,
 		Metadata:    c.metadata,
 		Mounts:      mounts,
 		Reason:      reason,
-		StartedAt:   &c.startedAt,
-		State:       &c.state,
+		StartedAt:   c.startedAt,
+		State:       c.state,
 	}
 
 	return ret

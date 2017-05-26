@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2014-2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,23 +17,31 @@ limitations under the License.
 package soap
 
 import (
+	"bufio"
 	"bytes"
+	"context"
+	"crypto/sha1"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/vmware/govmomi/vim25/progress"
 	"github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/govmomi/vim25/xml"
-	"golang.org/x/net/context"
 )
 
 type HasFault interface {
@@ -44,6 +52,16 @@ type RoundTripper interface {
 	RoundTrip(ctx context.Context, req, res HasFault) error
 }
 
+const (
+	DefaultVimNamespace  = "urn:vim25"
+	DefaultVimVersion    = "6.5"
+	DefaultMinVimVersion = "5.5"
+)
+
+type header struct {
+	Cookie string `xml:"vcSessionCookie,omitempty"`
+}
+
 type Client struct {
 	http.Client
 
@@ -52,6 +70,46 @@ type Client struct {
 	d *debugContainer
 	t *http.Transport
 	p *url.URL
+
+	hostsMu sync.Mutex
+	hosts   map[string]string
+
+	Namespace string // Vim namespace
+	Version   string // Vim version
+	UserAgent string
+
+	header *header
+}
+
+var schemeMatch = regexp.MustCompile(`^\w+://`)
+
+// ParseURL is wrapper around url.Parse, where Scheme defaults to "https" and Path defaults to "/sdk"
+func ParseURL(s string) (*url.URL, error) {
+	var err error
+	var u *url.URL
+
+	if s != "" {
+		// Default the scheme to https
+		if !schemeMatch.MatchString(s) {
+			s = "https://" + s
+		}
+
+		u, err = url.Parse(s)
+		if err != nil {
+			return nil, err
+		}
+
+		// Default the path to /sdk
+		if u.Path == "" {
+			u.Path = "/sdk"
+		}
+
+		if u.User == nil {
+			u.User = url.UserPassword("", "")
+		}
+	}
+
+	return u, nil
 }
 
 func NewClient(u *url.URL, insecure bool) *Client {
@@ -62,17 +120,24 @@ func NewClient(u *url.URL, insecure bool) *Client {
 	}
 
 	// Initialize http.RoundTripper on client, so we can customize it below
-	c.t = &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		Dial: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}).Dial,
+	if t, ok := http.DefaultTransport.(*http.Transport); ok {
+		c.t = &http.Transport{
+			Proxy:                 t.Proxy,
+			DialContext:           t.DialContext,
+			MaxIdleConns:          t.MaxIdleConns,
+			IdleConnTimeout:       t.IdleConnTimeout,
+			TLSHandshakeTimeout:   t.TLSHandshakeTimeout,
+			ExpectContinueTimeout: t.ExpectContinueTimeout,
+		}
+	} else {
+		c.t = new(http.Transport)
 	}
 
-	if c.u.Scheme == "https" {
-		c.t.TLSClientConfig = &tls.Config{InsecureSkipVerify: c.k}
-		c.t.TLSHandshakeTimeout = 10 * time.Second
+	c.hosts = make(map[string]string)
+	c.t.TLSClientConfig = &tls.Config{InsecureSkipVerify: c.k}
+	// Don't bother setting DialTLS if InsecureSkipVerify=true
+	if !c.k {
+		c.t.DialTLS = c.dialTLS
 	}
 
 	c.Client.Transport = c.t
@@ -82,7 +147,186 @@ func NewClient(u *url.URL, insecure bool) *Client {
 	c.u = c.URL()
 	c.u.User = nil
 
+	c.Namespace = DefaultVimNamespace
+	c.Version = DefaultVimVersion
+
 	return &c
+}
+
+// NewServiceClient creates a NewClient with the given URL.Path and namespace.
+func (c *Client) NewServiceClient(path string, namespace string) *Client {
+	u := c.URL()
+	u.Path = path
+
+	client := NewClient(u, c.k)
+
+	client.Namespace = namespace
+
+	// Copy the cookies
+	client.Client.Jar.SetCookies(u, c.Client.Jar.Cookies(u))
+
+	// Set SOAP Header cookie
+	for _, cookie := range client.Jar.Cookies(u) {
+		if cookie.Name == "vmware_soap_session" {
+			client.header = &header{
+				Cookie: cookie.Value,
+			}
+
+			break
+		}
+	}
+
+	return client
+}
+
+// SetRootCAs defines the set of root certificate authorities
+// that clients use when verifying server certificates.
+// By default TLS uses the host's root CA set.
+//
+// See: http.Client.Transport.TLSClientConfig.RootCAs
+func (c *Client) SetRootCAs(file string) error {
+	pool := x509.NewCertPool()
+
+	for _, name := range filepath.SplitList(file) {
+		pem, err := ioutil.ReadFile(name)
+		if err != nil {
+			return err
+		}
+
+		pool.AppendCertsFromPEM(pem)
+	}
+
+	c.t.TLSClientConfig.RootCAs = pool
+
+	return nil
+}
+
+// Add default https port if missing
+func hostAddr(addr string) string {
+	_, port := splitHostPort(addr)
+	if port == "" {
+		return addr + ":443"
+	}
+	return addr
+}
+
+// SetThumbprint sets the known certificate thumbprint for the given host.
+// A custom DialTLS function is used to support thumbprint based verification.
+// We first try tls.Dial with the default tls.Config, only falling back to thumbprint verification
+// if it fails with an x509.UnknownAuthorityError or x509.HostnameError
+//
+// See: http.Client.Transport.DialTLS
+func (c *Client) SetThumbprint(host string, thumbprint string) {
+	host = hostAddr(host)
+
+	c.hostsMu.Lock()
+	if thumbprint == "" {
+		delete(c.hosts, host)
+	} else {
+		c.hosts[host] = thumbprint
+	}
+	c.hostsMu.Unlock()
+}
+
+// Thumbprint returns the certificate thumbprint for the given host if known to this client.
+func (c *Client) Thumbprint(host string) string {
+	host = hostAddr(host)
+	c.hostsMu.Lock()
+	defer c.hostsMu.Unlock()
+	return c.hosts[host]
+}
+
+// LoadThumbprints from file with the give name.
+// If name is empty or name does not exist this function will return nil.
+func (c *Client) LoadThumbprints(file string) error {
+	if file == "" {
+		return nil
+	}
+
+	for _, name := range filepath.SplitList(file) {
+		err := c.loadThumbprints(name)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) loadThumbprints(name string) error {
+	f, err := os.Open(name)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		e := strings.SplitN(scanner.Text(), " ", 2)
+		if len(e) != 2 {
+			continue
+		}
+
+		c.SetThumbprint(e[0], e[1])
+	}
+
+	_ = f.Close()
+
+	return scanner.Err()
+}
+
+// ThumbprintSHA1 returns the thumbprint of the given cert in the same format used by the SDK and Client.SetThumbprint.
+//
+// See: SSLVerifyFault.Thumbprint, SessionManagerGenericServiceTicket.Thumbprint, HostConnectSpec.SslThumbprint
+func ThumbprintSHA1(cert *x509.Certificate) string {
+	sum := sha1.Sum(cert.Raw)
+	hex := make([]string, len(sum))
+	for i, b := range sum {
+		hex[i] = fmt.Sprintf("%02X", b)
+	}
+	return strings.Join(hex, ":")
+}
+
+func (c *Client) dialTLS(network string, addr string) (net.Conn, error) {
+	// Would be nice if there was a tls.Config.Verify func,
+	// see tls.clientHandshakeState.doFullHandshake
+
+	conn, err := tls.Dial(network, addr, c.t.TLSClientConfig)
+
+	if err == nil {
+		return conn, nil
+	}
+
+	switch err.(type) {
+	case x509.UnknownAuthorityError:
+	case x509.HostnameError:
+	default:
+		return nil, err
+	}
+
+	thumbprint := c.Thumbprint(addr)
+	if thumbprint == "" {
+		return nil, err
+	}
+
+	config := &tls.Config{InsecureSkipVerify: true}
+	conn, err = tls.Dial(network, addr, config)
+	if err != nil {
+		return nil, err
+	}
+
+	cert := conn.ConnectionState().PeerCertificates[0]
+	peer := ThumbprintSHA1(cert)
+	if thumbprint != peer {
+		_ = conn.Close()
+
+		return nil, fmt.Errorf("Host %q thumbprint does not match %q", addr, thumbprint)
+	}
+
+	return conn, nil
 }
 
 // splitHostPort is similar to net.SplitHostPort,
@@ -113,7 +357,13 @@ func (c *Client) SetCertificate(cert tls.Certificate) {
 	host, _ := splitHostPort(c.u.Host)
 
 	// Should be no reason to change the default port other than testing
-	port := os.Getenv("GOVC_TUNNEL_PROXY_PORT")
+	key := "GOVMOMI_TUNNEL_PROXY_PORT"
+
+	port := c.URL().Query().Get(key)
+	if port == "" {
+		port = os.Getenv(key)
+	}
+
 	if port != "" {
 		host += ":" + port
 	}
@@ -170,33 +420,11 @@ func (c *Client) UnmarshalJSON(b []byte) error {
 }
 
 func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, error) {
-	if nil == ctx || nil == ctx.Done() { // ctx.Done() is for context.TODO()
+	if nil == ctx || nil == ctx.Done() { // ctx.Done() is for ctx
 		return c.Client.Do(req)
 	}
 
-	var resc = make(chan *http.Response, 1)
-	var errc = make(chan error, 1)
-
-	// Perform request from separate routine.
-	go func() {
-		res, err := c.Client.Do(req)
-		if err != nil {
-			errc <- err
-		} else {
-			resc <- res
-		}
-	}()
-
-	// Wait for request completion of context expiry.
-	select {
-	case <-ctx.Done():
-		c.t.CancelRequest(req)
-		return nil, ctx.Err()
-	case err := <-errc:
-		return nil, err
-	case res := <-resc:
-		return res, nil
-	}
+	return c.Client.Do(req.WithContext(ctx))
 }
 
 func (c *Client) RoundTrip(ctx context.Context, reqBody, resBody HasFault) error {
@@ -204,6 +432,8 @@ func (c *Client) RoundTrip(ctx context.Context, reqBody, resBody HasFault) error
 
 	reqEnv := Envelope{Body: reqBody}
 	resEnv := Envelope{Body: resBody}
+
+	reqEnv.Header = c.header
 
 	// Create debugging context for this round trip
 	d := c.d.newRoundTrip()
@@ -223,7 +453,11 @@ func (c *Client) RoundTrip(ctx context.Context, reqBody, resBody HasFault) error
 	}
 
 	req.Header.Set(`Content-Type`, `text/xml; charset="utf-8"`)
-	req.Header.Set(`SOAPAction`, `urn:vim25/6.0`)
+	soapAction := fmt.Sprintf("%s/%s", c.Namespace, c.Version)
+	req.Header.Set(`SOAPAction`, soapAction)
+	if c.UserAgent != "" {
+		req.Header.Set(`User-Agent`, c.UserAgent)
+	}
 
 	if d.enabled() {
 		d.debugRequest(req)
@@ -377,6 +611,7 @@ func (c *Client) UploadFile(file string, u *url.URL, param *Upload) error {
 
 type Download struct {
 	Method   string
+	Headers  map[string]string
 	Ticket   *http.Cookie
 	Progress progress.Sinker
 }
@@ -385,35 +620,30 @@ var DefaultDownload = Download{
 	Method: "GET",
 }
 
-// DownloadFile GETs the given URL to a local file
-func (c *Client) DownloadFile(file string, u *url.URL, param *Download) error {
-	var err error
-
-	if param == nil {
-		param = &DefaultDownload
-	}
-
-	fh, err := os.Create(file)
-	if err != nil {
-		return err
-	}
-	defer fh.Close()
-
+// DownloadRequest wraps http.Client.Do, returning the http.Response without checking its StatusCode
+func (c *Client) DownloadRequest(u *url.URL, param *Download) (*http.Response, error) {
 	req, err := http.NewRequest(param.Method, u.String(), nil)
 	if err != nil {
-		return err
+		return nil, err
+	}
+
+	for k, v := range param.Headers {
+		req.Header.Add(k, v)
 	}
 
 	if param.Ticket != nil {
 		req.AddCookie(param.Ticket)
 	}
 
-	res, err := c.Client.Do(req)
-	if err != nil {
-		return err
-	}
+	return c.Client.Do(req)
+}
 
-	defer res.Body.Close()
+// Download GETs the remote file from the given URL
+func (c *Client) Download(u *url.URL, param *Download) (io.ReadCloser, int64, error) {
+	res, err := c.DownloadRequest(u, param)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	switch res.StatusCode {
 	case http.StatusOK:
@@ -422,12 +652,35 @@ func (c *Client) DownloadFile(file string, u *url.URL, param *Download) error {
 	}
 
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 
-	var r io.Reader = res.Body
+	return res.Body, res.ContentLength, nil
+}
+
+// DownloadFile GETs the given URL to a local file
+func (c *Client) DownloadFile(file string, u *url.URL, param *Download) error {
+	var err error
+	if param == nil {
+		param = &DefaultDownload
+	}
+
+	rc, contentLength, err := c.Download(u, param)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	var r io.Reader = rc
+
+	fh, err := os.Create(file)
+	if err != nil {
+		return err
+	}
+	defer fh.Close()
+
 	if param.Progress != nil {
-		pr := progress.NewReader(param.Progress, res.Body, res.ContentLength)
+		pr := progress.NewReader(param.Progress, r, contentLength)
 		r = pr
 
 		// Mark progress reader as done when returning from this function.

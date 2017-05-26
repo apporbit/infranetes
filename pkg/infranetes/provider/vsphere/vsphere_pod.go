@@ -16,7 +16,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type podData struct{}
@@ -220,7 +220,7 @@ func (v *vspherePodProvider) createVM(config *kubeapi.PodSandboxConfig, podIp st
 	//aAnno := parseAWSAnnotations(config.Annotations)
 
 	vm := &vsvm.VM{
-		Name:            "kube-infra-" + *config.Metadata.Uid,
+		Name:            "kube-infra-" + config.Metadata.Uid,
 		Host:            v.config.Host,
 		Username:        v.config.Username,
 		Password:        v.config.Password,

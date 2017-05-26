@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2014-2016 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ are kept outside the object package.
 package govmomi
 
 import (
+	"context"
 	"crypto/tls"
 	"net/url"
 
@@ -65,7 +66,6 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 type Client struct {
@@ -159,4 +159,9 @@ func (c *Client) Retrieve(ctx context.Context, objs []types.ManagedObjectReferen
 // Wait dispatches to property.Wait.
 func (c *Client) Wait(ctx context.Context, obj types.ManagedObjectReference, ps []string, f func([]types.PropertyChange) bool) error {
 	return property.Wait(ctx, c.PropertyCollector(), obj, ps, f)
+}
+
+// IsVC returns true if we are connected to a vCenter
+func (c *Client) IsVC() bool {
+	return c.Client.IsVC()
 }

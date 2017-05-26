@@ -20,13 +20,14 @@ import (
 	dockerfilters "github.com/docker/engine-api/types/filters"
 	dockerstrslice "github.com/docker/engine-api/types/strslice"
 	"github.com/hpcloud/tail"
-	"k8s.io/kubernetes/pkg/kubelet/dockertools"
+	"k8s.io/kubernetes/pkg/kubelet/dockershim"
+	"k8s.io/kubernetes/pkg/kubelet/dockershim/libdocker"
 
 	"github.com/sjpotter/infranetes/pkg/common"
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type dockerProvider struct {
@@ -58,8 +59,8 @@ func NewDockerProvider() (vmserver.ContainerProvider, error) {
 			client:  client,
 			tailMap: make(map[string]*tail.Tail),
 			streamingRuntime: &streamingRuntime{
-				client:      dockertools.KubeWrapDockerclient(client),
-				execHandler: &dockertools.NativeExecHandler{},
+				client:      libdocker.KubeWrapDockerclient(client),
+				execHandler: &dockershim.NativeExecHandler{},
 				//execHandler: &dockertools.NsenterExecHandler{},
 			},
 		}
@@ -167,7 +168,7 @@ func (d *dockerProvider) CreateContainer(req *kubeapi.CreateContainerRequest) (*
 	id := podSandboxID + ":" + dockResp.ID
 
 	resp := &kubeapi.CreateContainerResponse{
-		ContainerId: &id,
+		ContainerId: id,
 	}
 
 	return resp, nil
@@ -260,7 +261,7 @@ func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*ku
 	//f.AddLabel(containerTypeLabelKey, containerTypeLabelContainer)
 
 	if req.Filter != nil {
-		if req.Filter.Id != nil {
+		if req.Filter.Id != "" {
 			_, contId, err := icommon.ParseContainer(req.GetFilter().GetId())
 			if err != nil {
 				return nil, fmt.Errorf("ListContainers: err = %v", err)
@@ -270,7 +271,7 @@ func (d *dockerProvider) ListContainers(req *kubeapi.ListContainersRequest) (*ku
 		}
 
 		if req.Filter.State != nil {
-			opts.Filter.Add("status", common.ToDockerContainerStatus(req.Filter.GetState()))
+			opts.Filter.Add("status", common.ToDockerContainerStatus(req.Filter.GetState().State))
 		}
 
 		if req.GetFilter().LabelSelector != nil {
@@ -338,9 +339,9 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 	for _, m := range r.Mounts {
 		readonly := !m.RW
 		mounts = append(mounts, &kubeapi.Mount{
-			ContainerPath: &m.Destination,
-			HostPath:      &m.Source,
-			Readonly:      &readonly,
+			ContainerPath: m.Destination,
+			HostPath:      m.Source,
+			Readonly:      readonly,
 			// Note: Can't set SeLinuxRelabel
 		})
 	}
@@ -400,17 +401,17 @@ func (d *dockerProvider) ContainerStatus(req *kubeapi.ContainerStatusRequest) (*
 	labels, annotations := common.ExtractLabels(r.Config.Labels)
 	resp := &kubeapi.ContainerStatusResponse{
 		Status: &kubeapi.ContainerStatus{
-			Id:          &id,
+			Id:          id,
 			Metadata:    metadata,
-			Image:       &kubeapi.ImageSpec{Image: &r.Config.Image},
-			ImageRef:    &r.Image,
+			Image:       &kubeapi.ImageSpec{Image: r.Config.Image},
+			ImageRef:    r.Image,
 			Mounts:      mounts,
-			ExitCode:    &exitCode,
-			State:       &state,
-			CreatedAt:   &ct,
-			StartedAt:   &st,
-			FinishedAt:  &ft,
-			Reason:      &reason,
+			ExitCode:    exitCode,
+			State:       state,
+			CreatedAt:   ct,
+			StartedAt:   st,
+			FinishedAt:  ft,
+			Reason:      reason,
 			Labels:      labels,
 			Annotations: annotations,
 		},

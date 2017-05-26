@@ -8,6 +8,13 @@ load(
     "go_test",
 )
 
+go_test(
+    name = "go_default_test",
+    srcs = ["helpers_test.go"],
+    library = ":go_default_library",
+    tags = ["automanaged"],
+)
+
 go_library(
     name = "go_default_library",
     srcs = [
@@ -20,20 +27,30 @@ go_library(
     tags = ["automanaged"],
     deps = [
         "//pkg/api:go_default_library",
-        "//pkg/api/resource:go_default_library",
-        "//pkg/apis/autoscaling:go_default_library",
-        "//pkg/apis/meta/v1:go_default_library",
-        "//pkg/conversion:go_default_library",
-        "//pkg/runtime:go_default_library",
-        "//pkg/runtime/schema:go_default_library",
-        "//pkg/util/intstr:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/api/resource:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/apis/meta/v1:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/conversion:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/types:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/intstr:go_default_library",
     ],
 )
 
-go_test(
-    name = "go_default_test",
-    srcs = ["helpers_test.go"],
-    library = "go_default_library",
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
     tags = ["automanaged"],
-    deps = [],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//pkg/apis/extensions/install:all-srcs",
+        "//pkg/apis/extensions/v1beta1:all-srcs",
+        "//pkg/apis/extensions/validation:all-srcs",
+    ],
+    tags = ["automanaged"],
 )
