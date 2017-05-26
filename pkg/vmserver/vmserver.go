@@ -23,7 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/types"
 
 	"github.com/sjpotter/infranetes/pkg/common"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 const statsCacheDuration = 2 * time.Minute
@@ -67,7 +67,7 @@ func NewVMServer(cert *string, key *string, contProvider ContainerProvider) (*VM
 	}
 	opts = []grpc.ServerOption{grpc.Creds(creds)}
 
-	sysFs, err := sysfs.NewRealSysFs()
+	sysFs := sysfs.NewRealSysFs()
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't create sysfs object: %v", err)
 	}
@@ -117,10 +117,10 @@ func (s *VMserver) Version(ctx context.Context, req *kubeapi.VersionRequest) (*k
 	runtimeName := "infranetes"
 
 	resp := &kubeapi.VersionResponse{
-		RuntimeApiVersion: &runtimeAPIVersion,
-		RuntimeName:       &runtimeName,
-		RuntimeVersion:    &runtimeAPIVersion,
-		Version:           &runtimeAPIVersion,
+		RuntimeApiVersion: runtimeAPIVersion,
+		RuntimeName:       runtimeName,
+		RuntimeVersion:    runtimeAPIVersion,
+		Version:           runtimeAPIVersion,
 	}
 
 	return resp, nil

@@ -17,6 +17,7 @@ limitations under the License.
 package object
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,18 +26,15 @@ import (
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 type HostFirewallSystem struct {
 	Common
-	Host *HostSystem
 }
 
-func NewHostFirewallSystem(c *vim25.Client, ref types.ManagedObjectReference, host types.ManagedObjectReference) *HostFirewallSystem {
+func NewHostFirewallSystem(c *vim25.Client, ref types.ManagedObjectReference) *HostFirewallSystem {
 	return &HostFirewallSystem{
 		Common: NewCommon(c, ref),
-		Host:   NewHostSystem(c, host),
 	}
 }
 

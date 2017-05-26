@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ limitations under the License.
 package object
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,7 +26,6 @@ import (
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 type HttpNfcLease struct {
@@ -82,7 +82,7 @@ func (o HttpNfcLease) HttpNfcLeaseGetManifest(ctx context.Context) error {
 }
 
 // HttpNfcLeaseProgress wraps methods.HttpNfcLeaseProgress
-func (o HttpNfcLease) HttpNfcLeaseProgress(ctx context.Context, percent int) error {
+func (o HttpNfcLease) HttpNfcLeaseProgress(ctx context.Context, percent int32) error {
 	req := types.HttpNfcLeaseProgress{
 		This:    o.Reference(),
 		Percent: percent,

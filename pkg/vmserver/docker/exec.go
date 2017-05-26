@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -14,13 +15,12 @@ import (
 	dockerapi "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
 
+	"k8s.io/client-go/tools/remotecommand"
 	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	"k8s.io/kubernetes/pkg/kubelet/util/ioutils"
 	utilexec "k8s.io/kubernetes/pkg/util/exec"
-	"k8s.io/kubernetes/pkg/util/term"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
-	"strings"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 // operationTimeout is the error returned when the docker operations are timeout.
@@ -178,7 +178,7 @@ type StreamOptions struct {
 	ErrorStream  io.Writer
 }
 
-func (p *dockerProvider) ExecInContainer(container *dockertypes.ContainerJSON, cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan term.Size, timeout time.Duration) error {
+func (p *dockerProvider) ExecInContainer(container *dockertypes.ContainerJSON, cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize, timeout time.Duration) error {
 	createOpts := dockertypes.ExecConfig{
 		Cmd:          cmd,
 		AttachStdin:  stdin != nil,
@@ -193,7 +193,7 @@ func (p *dockerProvider) ExecInContainer(container *dockertypes.ContainerJSON, c
 
 	// Have to start this before the call to client.StartExec because client.StartExec is a blocking
 	// call :-( Otherwise, resize events don't get processed and the terminal never resizes.
-	kubecontainer.HandleResizing(resize, func(size term.Size) {
+	kubecontainer.HandleResizing(resize, func(size remotecommand.TerminalSize) {
 		p.ResizeExecTTY(execObj.ID, int(size.Height), int(size.Width))
 	})
 
@@ -266,7 +266,7 @@ func (p *dockerProvider) ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSy
 	ret := &kubeapi.ExecSyncResponse{
 		Stdout:   stdoutBuffer.Bytes(),
 		Stderr:   stderrBuffer.Bytes(),
-		ExitCode: &exitCode,
+		ExitCode: exitCode,
 	}
 
 	return ret, nil

@@ -8,7 +8,7 @@ import (
 
 	"github.com/sjpotter/infranetes/pkg/vmserver/common"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type fakeContainerProvider struct {
@@ -57,7 +57,7 @@ func (f *fakeContainerProvider) CreateContainer(req *kubeapi.CreateContainerRequ
 
 	id := req.GetPodSandboxId() + ":" + req.Config.Metadata.GetName()
 	f.contMap[id] = common.NewContainer(&id,
-		req.PodSandboxId,
+		&req.PodSandboxId,
 		kubeapi.ContainerState_CONTAINER_CREATED,
 		req.Config.Metadata,
 		req.Config.Image,
@@ -65,7 +65,7 @@ func (f *fakeContainerProvider) CreateContainer(req *kubeapi.CreateContainerRequ
 		req.Config.Labels,
 		req.Config.Annotations)
 
-	return &kubeapi.CreateContainerResponse{ContainerId: &id}, nil
+	return &kubeapi.CreateContainerResponse{ContainerId: id}, nil
 }
 
 func (f *fakeContainerProvider) StartContainer(req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
@@ -129,17 +129,17 @@ func (f *fakeContainerProvider) ListContainers(req *kubeapi.ListContainersReques
 
 func filter(filter *kubeapi.ContainerFilter, cont *common.Container) bool {
 	if filter != nil {
-		if filter.Id != nil && filter.GetId() == *cont.GetId() {
+		if filter.Id != "" && filter.GetId() == *cont.GetId() {
 			glog.Infof("Filtering out %v as want %v", *cont.GetId(), filter.GetId())
 			return true
 		}
 
-		if filter.State != nil && filter.GetState() != cont.GetState() {
+		if filter.State != nil && filter.GetState().State != cont.GetState() {
 			glog.Infof("Filtering out %v as want %v and got %v", *cont.GetId(), filter.GetState(), cont.GetState())
 			return true
 		}
 
-		if filter.PodSandboxId != nil && filter.GetPodSandboxId() != *cont.GetPodId() {
+		if filter.PodSandboxId != "" && filter.GetPodSandboxId() != *cont.GetPodId() {
 			glog.Infof("Filtering out %v as want %v and got %v", *cont.GetId(), filter.GetPodSandboxId(), *cont.GetPodId())
 			return true
 		}

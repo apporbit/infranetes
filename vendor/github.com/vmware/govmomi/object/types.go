@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ func NewReference(c *vim25.Client, e types.ManagedObjectReference) Reference {
 		return NewClusterComputeResource(c, e)
 	case "HostSystem":
 		return NewHostSystem(c, e)
-	case "Network":
+	case "Network", "OpaqueNetwork":
 		return NewNetwork(c, e)
 	case "ResourcePool":
 		return NewResourcePool(c, e)

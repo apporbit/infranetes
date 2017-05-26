@@ -16,6 +16,22 @@ go_library(
     tags = ["automanaged"],
     deps = [
         "//pkg/util/exec:go_default_library",
-        "//vendor:github.com/golang/glog",
+        "//vendor/github.com/golang/glog:go_default_library",
     ],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [
+        ":package-srcs",
+        "//pkg/util/netsh/testing:all-srcs",
+    ],
+    tags = ["automanaged"],
 )

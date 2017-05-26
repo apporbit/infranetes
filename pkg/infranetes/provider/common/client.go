@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -21,8 +22,7 @@ import (
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
 	"github.com/sjpotter/infranetes/pkg/common"
 
-	"io"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type Client interface {

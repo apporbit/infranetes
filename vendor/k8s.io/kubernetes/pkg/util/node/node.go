@@ -25,12 +25,12 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/v1"
-	metav1 "k8s.io/kubernetes/pkg/apis/meta/v1"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	"k8s.io/kubernetes/pkg/types"
-	"k8s.io/kubernetes/pkg/util/strategicpatch"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 )
 
 const (
@@ -75,7 +75,6 @@ func GetPreferredNodeAddress(node *v1.Node, preferredAddressTypes []v1.NodeAddre
 // GetNodeHostIP returns the provided node's IP, based on the priority:
 // 1. NodeInternalIP
 // 2. NodeExternalIP
-// 3. NodeLegacyHostIP
 func GetNodeHostIP(node *v1.Node) (net.IP, error) {
 	addresses := node.Status.Addresses
 	addressMap := make(map[v1.NodeAddressType][]v1.NodeAddress)
@@ -88,16 +87,12 @@ func GetNodeHostIP(node *v1.Node) (net.IP, error) {
 	if addresses, ok := addressMap[v1.NodeExternalIP]; ok {
 		return net.ParseIP(addresses[0].Address), nil
 	}
-	if addresses, ok := addressMap[v1.NodeLegacyHostIP]; ok {
-		return net.ParseIP(addresses[0].Address), nil
-	}
 	return nil, fmt.Errorf("host IP unknown; known addresses: %v", addresses)
 }
 
 // InternalGetNodeHostIP returns the provided node's IP, based on the priority:
 // 1. NodeInternalIP
 // 2. NodeExternalIP
-// 3. NodeLegacyHostIP
 func InternalGetNodeHostIP(node *api.Node) (net.IP, error) {
 	addresses := node.Status.Addresses
 	addressMap := make(map[api.NodeAddressType][]api.NodeAddress)
@@ -108,9 +103,6 @@ func InternalGetNodeHostIP(node *api.Node) (net.IP, error) {
 		return net.ParseIP(addresses[0].Address), nil
 	}
 	if addresses, ok := addressMap[api.NodeExternalIP]; ok {
-		return net.ParseIP(addresses[0].Address), nil
-	}
-	if addresses, ok := addressMap[api.NodeLegacyHostIP]; ok {
 		return net.ParseIP(addresses[0].Address), nil
 	}
 	return nil, fmt.Errorf("host IP unknown; known addresses: %v", addresses)
@@ -177,7 +169,7 @@ func PatchNodeStatus(c clientset.Interface, nodeName types.NodeName, oldNode *v1
 		return nil, fmt.Errorf("failed to create patch for node %q: %v", nodeName, err)
 	}
 
-	updatedNode, err := c.Core().Nodes().Patch(string(nodeName), api.StrategicMergePatchType, patchBytes, "status")
+	updatedNode, err := c.Core().Nodes().Patch(string(nodeName), types.StrategicMergePatchType, patchBytes, "status")
 	if err != nil {
 		return nil, fmt.Errorf("failed to patch status %q for node %q: %v", patchBytes, nodeName, err)
 	}

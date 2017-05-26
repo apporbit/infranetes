@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"k8s.io/kubernetes/pkg/util/term"
-
 	icommon "github.com/sjpotter/infranetes/pkg/common"
 	"github.com/sjpotter/infranetes/pkg/vmserver/common"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	"k8s.io/client-go/tools/remotecommand"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 )
 
@@ -29,11 +28,11 @@ func (d *podExecProvider) Logs(req *icommon.LogsRequest, stream icommon.VMServer
 
 type streamingRuntime struct{}
 
-func (r *streamingRuntime) Exec(containerID string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan term.Size) error {
+func (r *streamingRuntime) Exec(containerID string, cmd []string, in io.Reader, out, err io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) error {
 	return common.Exec(cmd, in, out, err, tty, resize)
 }
 
-func (r *streamingRuntime) Attach(containerID string, in io.Reader, out, errw io.WriteCloser, tty bool, resize <-chan term.Size) error {
+func (r *streamingRuntime) Attach(containerID string, in io.Reader, out, errw io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) error {
 	return fmt.Errorf("Attach currently unsupported for VMs")
 }
 

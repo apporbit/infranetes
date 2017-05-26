@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@ limitations under the License.
 package object
 
 import (
+	"context"
+
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/methods"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
-	"golang.org/x/net/context"
 )
 
 type Folder struct {
@@ -35,7 +36,9 @@ func NewFolder(c *vim25.Client, ref types.ManagedObjectReference) *Folder {
 }
 
 func NewRootFolder(c *vim25.Client) *Folder {
-	return NewFolder(c, c.ServiceContent.RootFolder)
+	f := NewFolder(c, c.ServiceContent.RootFolder)
+	f.InventoryPath = "/"
+	return f
 }
 
 func (f Folder) Children(ctx context.Context) ([]Reference, error) {
@@ -109,6 +112,20 @@ func (f Folder) CreateFolder(ctx context.Context, name string) (*Folder, error) 
 	return NewFolder(f.c, res.Returnval), err
 }
 
+func (f Folder) CreateStoragePod(ctx context.Context, name string) (*StoragePod, error) {
+	req := types.CreateStoragePod{
+		This: f.Reference(),
+		Name: name,
+	}
+
+	res, err := methods.CreateStoragePod(ctx, f.c, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewStoragePod(f.c, res.Returnval), err
+}
+
 func (f Folder) AddStandaloneHost(ctx context.Context, spec types.HostConnectSpec, addConnected bool, license *string, compResSpec *types.BaseComputeResourceConfigSpec) (*Task, error) {
 	req := types.AddStandaloneHost_Task{
 		This:         f.Reference(),
@@ -174,6 +191,34 @@ func (f Folder) RegisterVM(ctx context.Context, path string, name string, asTemp
 	}
 
 	res, err := methods.RegisterVM_Task(ctx, f.c, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTask(f.c, res.Returnval), nil
+}
+
+func (f Folder) CreateDVS(ctx context.Context, spec types.DVSCreateSpec) (*Task, error) {
+	req := types.CreateDVS_Task{
+		This: f.Reference(),
+		Spec: spec,
+	}
+
+	res, err := methods.CreateDVS_Task(ctx, f.c, &req)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewTask(f.c, res.Returnval), nil
+}
+
+func (f Folder) MoveInto(ctx context.Context, list []types.ManagedObjectReference) (*Task, error) {
+	req := types.MoveIntoFolder_Task{
+		This: f.Reference(),
+		List: list,
+	}
+
+	res, err := methods.MoveIntoFolder_Task(ctx, f.c, &req)
 	if err != nil {
 		return nil, err
 	}

@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2014 VMware, Inc. All Rights Reserved.
+Copyright (c) 2015 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -63,7 +63,6 @@ func EthernetCardTypes() VirtualDeviceList {
 		&types.VirtualVmxnet3{},
 	}).Select(func(device types.BaseVirtualDevice) bool {
 		c := device.(types.BaseVirtualEthernetCard).GetVirtualEthernetCard()
-		c.AddressType = string(types.VirtualEthernetCardMacTypeGenerated)
 		c.GetVirtualDevice().Key = -1
 		return true
 	})
@@ -85,6 +84,9 @@ func (l VirtualDeviceList) Select(f func(device types.BaseVirtualDevice) bool) V
 // SelectByType returns a new list with devices that are equal to or extend the given type.
 func (l VirtualDeviceList) SelectByType(deviceType types.BaseVirtualDevice) VirtualDeviceList {
 	dtype := reflect.TypeOf(deviceType)
+	if dtype == nil {
+		return nil
+	}
 	dname := dtype.Elem().Name()
 
 	return l.Select(func(device types.BaseVirtualDevice) bool {
@@ -126,7 +128,8 @@ func (l VirtualDeviceList) SelectByBackingInfo(backing types.BaseVirtualDeviceBa
 			return a.DeviceName == b.DeviceName
 		case *types.VirtualEthernetCardDistributedVirtualPortBackingInfo:
 			b := backing.(*types.VirtualEthernetCardDistributedVirtualPortBackingInfo)
-			return a.Port.SwitchUuid == b.Port.SwitchUuid
+			return a.Port.SwitchUuid == b.Port.SwitchUuid &&
+				a.Port.PortgroupKey == b.Port.PortgroupKey
 		case *types.VirtualDiskFlatVer2BackingInfo:
 			b := backing.(*types.VirtualDiskFlatVer2BackingInfo)
 			if a.Parent != nil && b.Parent != nil {
@@ -156,7 +159,7 @@ func (l VirtualDeviceList) Find(name string) types.BaseVirtualDevice {
 }
 
 // FindByKey returns the device matching the given key.
-func (l VirtualDeviceList) FindByKey(key int) types.BaseVirtualDevice {
+func (l VirtualDeviceList) FindByKey(key int32) types.BaseVirtualDevice {
 	for _, device := range l {
 		if device.GetVirtualDevice().Key == key {
 			return device
@@ -186,6 +189,13 @@ func (l VirtualDeviceList) FindIDEController(name string) (*types.VirtualIDECont
 	}
 
 	return c.(*types.VirtualIDEController), nil
+}
+
+// CreateIDEController creates a new IDE controller.
+func (l VirtualDeviceList) CreateIDEController() (types.BaseVirtualDevice, error) {
+	ide := &types.VirtualIDEController{}
+	ide.Key = l.NewKey()
+	return ide, nil
 }
 
 // FindSCSIController will find the named SCSI controller if given, otherwise will pick an available controller.
@@ -233,9 +243,9 @@ func (l VirtualDeviceList) CreateSCSIController(name string) (types.BaseVirtualD
 	}
 
 	scsi := c.GetVirtualSCSIController()
-
 	scsi.BusNumber = l.newSCSIBusNumber()
-
+	scsi.Key = l.NewKey()
+	scsi.ScsiCtlrUnitNumber = 7
 	return c.(types.BaseVirtualDevice), nil
 }
 
@@ -243,13 +253,13 @@ var scsiBusNumbers = []int{0, 1, 2, 3}
 
 // newSCSIBusNumber returns the bus number to use for adding a new SCSI bus device.
 // -1 is returned if there are no bus numbers available.
-func (l VirtualDeviceList) newSCSIBusNumber() int {
+func (l VirtualDeviceList) newSCSIBusNumber() int32 {
 	var used []int
 
 	for _, d := range l.SelectByType((*types.VirtualSCSIController)(nil)) {
 		num := d.(types.BaseVirtualSCSIController).GetVirtualSCSIController().BusNumber
 		if num >= 0 {
-			used = append(used, num)
+			used = append(used, int(num))
 		} // else caller is creating a new vm using SCSIControllerTypes
 	}
 
@@ -257,7 +267,64 @@ func (l VirtualDeviceList) newSCSIBusNumber() int {
 
 	for i, n := range scsiBusNumbers {
 		if i == len(used) || n != used[i] {
-			return n
+			return int32(n)
+		}
+	}
+
+	return -1
+}
+
+// FindNVMEController will find the named NVME controller if given, otherwise will pick an available controller.
+// An error is returned if the named controller is not found or not an NVME controller.  Or, if name is not
+// given and no available controller can be found.
+func (l VirtualDeviceList) FindNVMEController(name string) (*types.VirtualNVMEController, error) {
+	if name != "" {
+		d := l.Find(name)
+		if d == nil {
+			return nil, fmt.Errorf("device '%s' not found", name)
+		}
+		if c, ok := d.(*types.VirtualNVMEController); ok {
+			return c, nil
+		}
+		return nil, fmt.Errorf("%s is not an NVME controller", name)
+	}
+
+	c := l.PickController((*types.VirtualNVMEController)(nil))
+	if c == nil {
+		return nil, errors.New("no available NVME controller")
+	}
+
+	return c.(*types.VirtualNVMEController), nil
+}
+
+// CreateNVMEController creates a new NVMWE controller.
+func (l VirtualDeviceList) CreateNVMEController() (types.BaseVirtualDevice, error) {
+	nvme := &types.VirtualNVMEController{}
+	nvme.BusNumber = l.newNVMEBusNumber()
+	nvme.Key = l.NewKey()
+
+	return nvme, nil
+}
+
+var nvmeBusNumbers = []int{0, 1, 2, 3}
+
+// newNVMEBusNumber returns the bus number to use for adding a new NVME bus device.
+// -1 is returned if there are no bus numbers available.
+func (l VirtualDeviceList) newNVMEBusNumber() int32 {
+	var used []int
+
+	for _, d := range l.SelectByType((*types.VirtualNVMEController)(nil)) {
+		num := d.(types.BaseVirtualController).GetVirtualController().BusNumber
+		if num >= 0 {
+			used = append(used, int(num))
+		} // else caller is creating a new vm using NVMEControllerTypes
+	}
+
+	sort.Ints(used)
+
+	for i, n := range nvmeBusNumbers {
+		if i == len(used) || n != used[i] {
+			return int32(n)
 		}
 	}
 
@@ -271,6 +338,8 @@ func (l VirtualDeviceList) FindDiskController(name string) (types.BaseVirtualCon
 		return l.FindIDEController("")
 	case name == "scsi" || name == "":
 		return l.FindSCSIController("")
+	case name == "nvme":
+		return l.FindNVMEController("")
 	default:
 		if c, ok := l.Find(name).(types.BaseVirtualController); ok {
 			return c, nil
@@ -290,6 +359,8 @@ func (l VirtualDeviceList) PickController(kind types.BaseVirtualController) type
 			return num < 15
 		case *types.VirtualIDEController:
 			return num < 2
+		case *types.VirtualNVMEController:
+			return num < 8
 		default:
 			return true
 		}
@@ -303,33 +374,65 @@ func (l VirtualDeviceList) PickController(kind types.BaseVirtualController) type
 }
 
 // newUnitNumber returns the unit number to use for attaching a new device to the given controller.
-func (l VirtualDeviceList) newUnitNumber(c types.BaseVirtualController) int {
+func (l VirtualDeviceList) newUnitNumber(c types.BaseVirtualController) int32 {
+	units := make([]bool, 30)
+
+	switch sc := c.(type) {
+	case types.BaseVirtualSCSIController:
+		//  The SCSI controller sits on its own bus
+		units[sc.GetVirtualSCSIController().ScsiCtlrUnitNumber] = true
+	}
+
 	key := c.GetVirtualController().Key
-	max := -1
 
 	for _, device := range l {
 		d := device.GetVirtualDevice()
 
-		if d.ControllerKey == key {
-			if d.UnitNumber > max {
-				max = d.UnitNumber
-			}
+		if d.ControllerKey == key && d.UnitNumber != nil {
+			units[int(*d.UnitNumber)] = true
 		}
 	}
 
-	return max + 1
+	for unit, used := range units {
+		if !used {
+			return int32(unit)
+		}
+	}
+
+	return -1
+}
+
+// NewKey returns the key to use for adding a new device to the device list.
+// The device list we're working with here may not be complete (e.g. when
+// we're only adding new devices), so any positive keys could conflict with device keys
+// that are already in use. To avoid this type of conflict, we can use negative keys
+// here, which will be resolved to positive keys by vSphere as the reconfiguration is done.
+func (l VirtualDeviceList) NewKey() int32 {
+	var key int32 = -200
+
+	for _, device := range l {
+		d := device.GetVirtualDevice()
+		if d.Key < key {
+			key = d.Key
+		}
+	}
+
+	return key - 1
 }
 
 // AssignController assigns a device to a controller.
 func (l VirtualDeviceList) AssignController(device types.BaseVirtualDevice, c types.BaseVirtualController) {
 	d := device.GetVirtualDevice()
 	d.ControllerKey = c.GetVirtualController().Key
-	d.UnitNumber = l.newUnitNumber(c)
-	d.Key = -1
+	d.UnitNumber = new(int32)
+	*d.UnitNumber = l.newUnitNumber(c)
+	if d.Key == 0 {
+		d.Key = -1
+	}
 }
 
 // CreateDisk creates a new VirtualDisk device which can be added to a VM.
-func (l VirtualDeviceList) CreateDisk(c types.BaseVirtualController, name string) *types.VirtualDisk {
+func (l VirtualDeviceList) CreateDisk(c types.BaseVirtualController, ds types.ManagedObjectReference, name string) *types.VirtualDisk {
 	// If name is not specified, one will be chosen for you.
 	// But if when given, make sure it ends in .vmdk, otherwise it will be treated as a directory.
 	if len(name) > 0 && filepath.Ext(name) != ".vmdk" {
@@ -342,18 +445,14 @@ func (l VirtualDeviceList) CreateDisk(c types.BaseVirtualController, name string
 				DiskMode:        string(types.VirtualDiskModePersistent),
 				ThinProvisioned: types.NewBool(true),
 				VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{
-					FileName: name,
+					FileName:  name,
+					Datastore: &ds,
 				},
 			},
 		},
 	}
 
 	l.AssignController(device, c)
-
-	if device.UnitNumber == 0 {
-		device.UnitNumber = -1 // TODO: this field is annotated as omitempty
-	}
-
 	return device
 }
 
@@ -361,12 +460,15 @@ func (l VirtualDeviceList) CreateDisk(c types.BaseVirtualController, name string
 func (l VirtualDeviceList) ChildDisk(parent *types.VirtualDisk) *types.VirtualDisk {
 	disk := *parent
 	backing := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo)
-	ds := strings.SplitN(backing.FileName[1:], "]", 2)
+	p := new(DatastorePath)
+	p.FromString(backing.FileName)
+	p.Path = ""
 
 	// Use specified disk as parent backing to a new disk.
 	disk.Backing = &types.VirtualDiskFlatVer2BackingInfo{
 		VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{
-			FileName: fmt.Sprintf("[%s]", ds[0]),
+			FileName:  p.String(),
+			Datastore: backing.Datastore,
 		},
 		Parent:          backing,
 		DiskMode:        backing.DiskMode,
@@ -571,7 +673,17 @@ func (l VirtualDeviceList) CreateSerialPort() (*types.VirtualSerialPort, error) 
 }
 
 // ConnectSerialPort connects a serial port to a server or client uri.
-func (l VirtualDeviceList) ConnectSerialPort(device *types.VirtualSerialPort, uri string, client bool) *types.VirtualSerialPort {
+func (l VirtualDeviceList) ConnectSerialPort(device *types.VirtualSerialPort, uri string, client bool, proxyuri string) *types.VirtualSerialPort {
+	if strings.HasPrefix(uri, "[") {
+		device.Backing = &types.VirtualSerialPortFileBackingInfo{
+			VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{
+				FileName: uri,
+			},
+		}
+
+		return device
+	}
+
 	direction := types.VirtualDeviceURIBackingOptionDirectionServer
 	if client {
 		direction = types.VirtualDeviceURIBackingOptionDirectionClient
@@ -581,6 +693,7 @@ func (l VirtualDeviceList) ConnectSerialPort(device *types.VirtualSerialPort, ur
 		VirtualDeviceURIBackingInfo: types.VirtualDeviceURIBackingInfo{
 			Direction:  string(direction),
 			ServiceURI: uri,
+			ProxyURI:   proxyuri,
 		},
 	}
 
@@ -704,7 +817,11 @@ func (l VirtualDeviceList) SelectBootOrder(order []types.BaseVirtualMachineBootO
 
 // TypeName returns the vmodl type name of the device
 func (l VirtualDeviceList) TypeName(device types.BaseVirtualDevice) string {
-	return reflect.TypeOf(device).Elem().Name()
+	dtype := reflect.TypeOf(device)
+	if dtype == nil {
+		return ""
+	}
+	return dtype.Elem().Name()
 }
 
 var deviceNameRegexp = regexp.MustCompile(`(?:Virtual)?(?:Machine)?(\w+?)(?:Card|Device|Controller)?$`)
@@ -730,6 +847,8 @@ func (l VirtualDeviceList) Type(device types.BaseVirtualDevice) string {
 		return "pvscsi"
 	case *types.VirtualLsiLogicSASController:
 		return "lsilogic-sas"
+	case *types.VirtualNVMEController:
+		return "nvme"
 	default:
 		return l.deviceName(device)
 	}
@@ -738,17 +857,66 @@ func (l VirtualDeviceList) Type(device types.BaseVirtualDevice) string {
 // Name returns a stable, human-readable name for the given device
 func (l VirtualDeviceList) Name(device types.BaseVirtualDevice) string {
 	var key string
+	var UnitNumber int32
 	d := device.GetVirtualDevice()
-	dtype := l.Type(device)
+	if d.UnitNumber != nil {
+		UnitNumber = *d.UnitNumber
+	}
 
+	dtype := l.Type(device)
 	switch dtype {
 	case DeviceTypeEthernet:
-		key = fmt.Sprintf("%d", d.UnitNumber-7)
+		key = fmt.Sprintf("%d", UnitNumber-7)
 	case DeviceTypeDisk:
-		key = fmt.Sprintf("%d-%d", d.ControllerKey, d.UnitNumber)
+		key = fmt.Sprintf("%d-%d", d.ControllerKey, UnitNumber)
 	default:
 		key = fmt.Sprintf("%d", d.Key)
 	}
 
 	return fmt.Sprintf("%s-%s", dtype, key)
+}
+
+// ConfigSpec creates a virtual machine configuration spec for
+// the specified operation, for the list of devices in the device list.
+func (l VirtualDeviceList) ConfigSpec(op types.VirtualDeviceConfigSpecOperation) ([]types.BaseVirtualDeviceConfigSpec, error) {
+	var fop types.VirtualDeviceConfigSpecFileOperation
+	switch op {
+	case types.VirtualDeviceConfigSpecOperationAdd:
+		fop = types.VirtualDeviceConfigSpecFileOperationCreate
+	case types.VirtualDeviceConfigSpecOperationEdit:
+		fop = types.VirtualDeviceConfigSpecFileOperationReplace
+	case types.VirtualDeviceConfigSpecOperationRemove:
+		fop = types.VirtualDeviceConfigSpecFileOperationDestroy
+	default:
+		panic("unknown op")
+	}
+
+	var res []types.BaseVirtualDeviceConfigSpec
+	for _, device := range l {
+		config := &types.VirtualDeviceConfigSpec{
+			Device:    device,
+			Operation: op,
+		}
+
+		if disk, ok := device.(*types.VirtualDisk); ok {
+			config.FileOperation = fop
+
+			// Special case to attach an existing disk
+			if op == types.VirtualDeviceConfigSpecOperationAdd && disk.CapacityInKB == 0 {
+				childDisk := false
+				if b, ok := disk.Backing.(*types.VirtualDiskFlatVer2BackingInfo); ok {
+					childDisk = b.Parent != nil
+				}
+
+				if !childDisk {
+					// Existing disk, clear file operation
+					config.FileOperation = ""
+				}
+			}
+		}
+
+		res = append(res, config)
+	}
+
+	return res, nil
 }

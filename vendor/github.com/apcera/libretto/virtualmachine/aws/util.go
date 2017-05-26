@@ -25,7 +25,6 @@ const (
 	defaultInstanceType = "t2.micro"
 	defaultAMI          = "ami-5189a661" // ubuntu free tier
 	defaultVolumeSize   = 8              // GB
-	defaultDeviceName   = "/dev/sda1"
 	defaultVolumeType   = "gp2"
 
 	// RegionEnv is the env var for the AWS region.

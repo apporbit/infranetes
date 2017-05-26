@@ -464,7 +464,7 @@ func (self *manager) GetContainerInfoV2(containerName string, options v2.Request
 			continue
 		}
 
-		result.Stats = v2.ContainerStatsFromV1(&cinfo.Spec, stats)
+		result.Stats = v2.ContainerStatsFromV1(containerName, &cinfo.Spec, stats)
 		infos[name] = result
 	}
 
@@ -1255,11 +1255,13 @@ func getVersionInfo() (*info.VersionInfo, error) {
 	kernel_version := machine.KernelVersion()
 	container_os := machine.ContainerOsVersion()
 	docker_version := docker.VersionString()
+	docker_api_version := docker.APIVersionString()
 
 	return &info.VersionInfo{
 		KernelVersion:      kernel_version,
 		ContainerOsVersion: container_os,
 		DockerVersion:      docker_version,
+		DockerAPIVersion:   docker_api_version,
 		CadvisorVersion:    version.Info["version"],
 		CadvisorRevision:   version.Info["revision"],
 	}, nil

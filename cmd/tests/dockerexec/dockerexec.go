@@ -9,7 +9,8 @@ import (
 	"github.com/docker/docker/pkg/ioutils"
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
-	"k8s.io/kubernetes/pkg/kubelet/dockertools"
+	"k8s.io/kubernetes/pkg/kubelet/dockershim"
+	"k8s.io/kubernetes/pkg/kubelet/dockershim/libdocker"
 )
 
 func main() {
@@ -33,9 +34,9 @@ func main() {
 		fmt.Printf("docker New Client failed: %v", err)
 	}
 
-	dc := dockertools.KubeWrapDockerclient(client)
+	dc := libdocker.KubeWrapDockerclient(client)
 
-	exec := dockertools.NativeExecHandler{}
+	exec := dockershim.NativeExecHandler{}
 
 	cont, err := checkContainerStatus(dc, contId)
 	if err != nil {
@@ -58,7 +59,7 @@ func main() {
 	fmt.Printf("stderr = %v", string(stderr.Bytes()))
 }
 
-func checkContainerStatus(client dockertools.DockerInterface, containerID string) (*dockertypes.ContainerJSON, error) {
+func checkContainerStatus(client libdocker.Interface, containerID string) (*dockertypes.ContainerJSON, error) {
 	cont, err := client.InspectContainer(containerID)
 	if err != nil {
 		return nil, err

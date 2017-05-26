@@ -18,8 +18,8 @@ go_library(
     ],
     tags = ["automanaged"],
     deps = [
-        "//pkg/util/errors:go_default_library",
-        "//vendor:github.com/golang/glog",
+        "//vendor/github.com/golang/glog:go_default_library",
+        "//vendor/k8s.io/apimachinery/pkg/util/errors:go_default_library",
     ],
 )
 
@@ -29,9 +29,22 @@ go_test(
     data = [
         "example_proc_cgroup",
     ],
-    library = "go_default_library",
+    library = ":go_default_library",
     tags = [
         "automanaged",
     ],
-    deps = ["//vendor:github.com/stretchr/testify/assert"],
+    deps = ["//vendor/github.com/stretchr/testify/assert:go_default_library"],
+)
+
+filegroup(
+    name = "package-srcs",
+    srcs = glob(["**"]),
+    tags = ["automanaged"],
+    visibility = ["//visibility:private"],
+)
+
+filegroup(
+    name = "all-srcs",
+    srcs = [":package-srcs"],
+    tags = ["automanaged"],
 )

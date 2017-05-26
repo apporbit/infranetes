@@ -25,7 +25,7 @@ import (
 	"github.com/sjpotter/infranetes/pkg/infranetes/types"
 	"github.com/sjpotter/infranetes/pkg/utils"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 type podData struct {
@@ -277,10 +277,10 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 
 	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
 	if err == nil && len(result.Image.RepoTags) == 1 {
-		glog.Infof("PreCreateContainer: translated %v to %v", *req.Config.Image.Image, *result.Image.Id)
-		vm.AMI = *result.Image.Id
+		glog.Infof("PreCreateContainer: translated %v to %v", req.Config.Image.Image, result.Image.Id)
+		vm.AMI = result.Image.Id
 	} else {
-		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", *req.Config.Image.Image, err, result)
+		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", req.Config.Image.Image, err, result)
 	}
 
 	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip, volumes)

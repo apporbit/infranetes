@@ -22,10 +22,11 @@ import (
 	"path"
 
 	"github.com/golang/glog"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/pkg/api/v1"
-	metav1 "k8s.io/kubernetes/pkg/apis/meta/v1"
-	storage "k8s.io/kubernetes/pkg/apis/storage/v1beta1"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
+	v1helper "k8s.io/kubernetes/pkg/api/v1/helper"
+	storage "k8s.io/kubernetes/pkg/apis/storage/v1"
+	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/util/mount"
 )
 
@@ -149,13 +150,15 @@ func GetSecretForPV(secretNamespace, secretName, volumePluginName string, kubeCl
 }
 
 func GetClassForVolume(kubeClient clientset.Interface, pv *v1.PersistentVolume) (*storage.StorageClass, error) {
-	// TODO: replace with a real attribute after beta
-	className, found := pv.Annotations["volume.beta.kubernetes.io/storage-class"]
-	if !found {
-		return nil, fmt.Errorf("Volume has no class annotation")
+	if kubeClient == nil {
+		return nil, fmt.Errorf("Cannot get kube client")
+	}
+	className := v1helper.GetPersistentVolumeClass(pv)
+	if className == "" {
+		return nil, fmt.Errorf("Volume has no storage class")
 	}
 
-	class, err := kubeClient.Storage().StorageClasses().Get(className, metav1.GetOptions{})
+	class, err := kubeClient.StorageV1().StorageClasses().Get(className, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/apcera/libretto/ssh"
@@ -32,17 +33,19 @@ const (
 	StatePending = "pending"
 )
 
-// SSHTimeout is the maximum time to wait before failing to GetSSH. This is not
-// thread-safe.
-var SSHTimeout = 5 * time.Minute
-
 var (
+	// SSHTimeout is the maximum time to wait before failing to GetSSH. This is
+	// not thread-safe.
+	SSHTimeout = 5 * time.Minute
+
 	// This ensures that aws.VM implements the virtualmachine.VirtualMachine
 	// interface at compile time.
 	_ virtualmachine.VirtualMachine = (*VM)(nil)
 
-	// limiter rate limits channel to prevent saturating AWS API limits.
-	limiter = time.Tick(time.Millisecond * 500)
+	// nextProvision is the wall time when the next call to Provision will be
+	// allowed to proceed. This is part of the rate limiting system.
+	nextProvision time.Time
+	mu            sync.Mutex
 )
 
 var (
@@ -153,7 +156,8 @@ func (vm *VM) SetTags(tags map[string]string) error {
 // there was a problem during creation, if there was a problem adding a tag, or
 // if the VM takes too long to enter "running" state.
 func (vm *VM) Provision() error {
-	<-limiter
+	wait() // Avoid the AWS rate limit.
+
 	svc, err := getService(vm.Region)
 	if err != nil {
 		return fmt.Errorf("failed to get AWS service: %v", err)
@@ -185,6 +189,50 @@ func (vm *VM) Provision() error {
 	}
 
 	return nil
+}
+
+// wait implements a rate limiter that prevents more than one call every
+// 0.5s. The maximum time that the caller can be delayed is 1m.
+func wait() {
+	const maxWait = 1 * time.Minute
+
+	now := time.Now().UTC()
+	mu.Lock()
+	wait := getWaitTime(now, maxWait)
+	mu.Unlock()
+
+	time.Sleep(wait)
+
+	interval := 500 * time.Millisecond
+	if wait == maxWait {
+		interval = maxWait
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if now.Before(nextProvision) {
+		nextProvision = nextProvision.Add(interval)
+		return
+	}
+	now = time.Now().UTC()
+	nextProvision = now.Add(interval)
+}
+
+// getWaitTime computes the duration to sleep before the caller of wait() is
+// allowed to proceed. Every concurrent call adds 0.5s to the time the
+// subsequent caller must wait, up to a maximum of 1 minute.
+func getWaitTime(now time.Time, maxWait time.Duration) time.Duration {
+	wait := nextProvision.Sub(now) // might be negative
+
+	// When the system clock falls back an hour, the wait time might be an hour.
+	// This sanity check prevents this error.
+	if wait > maxWait {
+		return maxWait
+	}
+	if wait < 0 {
+		return 0
+	}
+	return wait
 }
 
 // GetIPs returns a slice of IP addresses assigned to the VM. The PublicIP or

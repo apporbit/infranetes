@@ -13,10 +13,12 @@ import (
 	"github.com/golang/glog"
 
 	"github.com/kr/pty"
+	"k8s.io/client-go/tools/remotecommand"
+	kubecontainer "k8s.io/kubernetes/pkg/kubelet/container"
 	utilexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/term"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/api/v1alpha1/runtime"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
 // Essentially used the same concept of version in dockertools/docker_manager.go
@@ -57,26 +59,7 @@ func PortForward(podSandboxID string, port int32, stream io.ReadWriteCloser) err
 	return nil
 }
 
-func handleResizing(resize <-chan term.Size, resizeFunc func(size term.Size)) {
-	if resize == nil {
-		return
-	}
-
-	go func() {
-		for {
-			size, ok := <-resize
-			if !ok {
-				return
-			}
-			if size.Height < 1 || size.Width < 1 {
-				continue
-			}
-			resizeFunc(size)
-		}
-	}()
-}
-
-func Exec(cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan term.Size) error {
+func Exec(cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool, resize <-chan remotecommand.TerminalSize) error {
 	command := exec.Command(cmd[0], cmd[1:]...)
 	var err error
 	if tty {
@@ -89,7 +72,7 @@ func Exec(cmd []string, stdin io.Reader, stdout, stderr io.WriteCloser, tty bool
 		// make sure to close the stdout stream
 		defer stdout.Close()
 
-		handleResizing(resize, func(size term.Size) {
+		kubecontainer.HandleResizing(resize, func(size remotecommand.TerminalSize) {
 			term.SetSize(p.Fd(), size)
 		})
 
@@ -158,7 +141,7 @@ func ExecSync(req *kubeapi.ExecSyncRequest) (*kubeapi.ExecSyncResponse, error) {
 	resp := &kubeapi.ExecSyncResponse{
 		Stderr:   stderrBuffer.Bytes(),
 		Stdout:   stdoutBuffer.Bytes(),
-		ExitCode: &exit,
+		ExitCode: exit,
 	}
 
 	return resp, nil
