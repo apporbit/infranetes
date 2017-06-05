@@ -190,3 +190,7 @@ func (p *awsImageProvider) Integrate(pp provider.PodProvider) bool {
 
 	return false
 }
+
+func (p *awsImageProvider) Translate(spec *kubeapi.ImageSpec) (string, error) {
+	return spec.Image, nil
+}

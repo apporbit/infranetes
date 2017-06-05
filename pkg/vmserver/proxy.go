@@ -3,6 +3,7 @@ package vmserver
 import (
 	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/sjpotter/infranetes/pkg/common"
@@ -17,12 +18,15 @@ import (
 
 var (
 	MasqueradeBit  = int32(14)
+	DropBit        = int32(15)
 	OOMScoreAdj    = int32(qos.KubeProxyOOMScoreAdj)
 	kubeconfigPath = "/var/lib/kube-proxy/"
 	kubeconfig     = kubeconfigPath + "kubeconfig"
 )
 
 func (m *VMserver) StartProxy(ctx context.Context, req *common.StartProxyRequest) (*common.StartProxyResponse, error) {
+	createTables()
+
 	config := &componentconfig.KubeProxyConfiguration{}
 
 	if err := os.MkdirAll(kubeconfigPath, 0700); err != nil {
@@ -36,6 +40,12 @@ func (m *VMserver) StartProxy(ctx context.Context, req *common.StartProxyRequest
 	master := "https://" + req.Ip
 	config.ClusterCIDR = req.ClusterCidr
 	config.ClientConnection.KubeConfigFile = kubeconfig
+	config.HealthzBindAddress = "0.0.0.0:10256"
+
+	syncP, _ := time.ParseDuration("1m")
+	config.IPTables.SyncPeriod.Duration = syncP
+	//minSyncP, _ := time.ParseDuration("10s")
+	//config.IPTables.MinSyncPeriod.Duration = minSyncP
 
 	scheme := runtime.NewScheme()
 	if err := componentconfig.AddToScheme(scheme); err != nil {
@@ -50,6 +60,8 @@ func (m *VMserver) StartProxy(ctx context.Context, req *common.StartProxyRequest
 	// defaults
 	config.OOMScoreAdj = &OOMScoreAdj
 	config.IPTables.MasqueradeBit = &MasqueradeBit
+	//config.IPTables.MasqueradeAll = true
+	config.BindAddress = *m.podIp
 
 	server, err := kubeproxy.NewProxyServer(config, false, scheme, master)
 	if err != nil {

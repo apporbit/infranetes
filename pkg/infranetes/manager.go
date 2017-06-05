@@ -179,6 +179,13 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 
 	logpath := filepath.Join(req.GetSandboxConfig().GetLogDirectory(), req.GetConfig().GetLogPath())
 
+	trans, err := m.contProvider.Translate(req.Config.Image)
+	if err != nil {
+		glog.Infof("createContainer: %v", err)
+		return nil, fmt.Errorf("%v", err)
+	}
+	req.Config.Image.Image = trans
+
 	resp, err := m.createContainer(podData, req)
 
 	podData.AddContLogPath(resp.GetContainerId(), logpath)

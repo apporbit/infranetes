@@ -86,3 +86,7 @@ func (p *fakeImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubea
 
 	return &kubeapi.RemoveImageResponse{}, nil
 }
+
+func (p *fakeImageProvider) Translate(spec *kubeapi.ImageSpec) (string, error) {
+	return spec.Image, nil
+}

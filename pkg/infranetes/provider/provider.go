@@ -24,6 +24,8 @@ type ImageProvider interface {
 	PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error)
 	RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error)
 
+	Translate(spec *kubeapi.ImageSpec) (string, error)
+
 	Integrate(p PodProvider) bool
 }
 
