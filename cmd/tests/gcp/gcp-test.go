@@ -1,16 +1,46 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+
 	gcpvm "github.com/apcera/libretto/virtualmachine/gcp"
 )
 
+type gceConfig struct {
+	Zone        string
+	SourceImage string
+	Project     string
+	Scope       string
+	AuthFile    string
+	Network     string
+	Subnet      string
+}
+
 func main() {
+	var conf gceConfig
+
+	file, err := ioutil.ReadFile("gce.json")
+	if err != nil {
+		fmt.Printf("File error: %v\n", err)
+		os.Exit(1)
+	}
+
+	json.Unmarshal(file, &conf)
+
+	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" || conf.Network == "" || conf.Subnet == "" {
+		msg := fmt.Sprintf("Failed to read in complete config file: conf = %+v", conf)
+		fmt.Println(msg)
+		os.Exit(1)
+	}
+
 	vm := gcpvm.VM{
 		Name:        "testy-mctester",
 		Zone:        "us-west1-a",
 		MachineType: "g1-small",
-		SourceImage: "infranetes-base",
+		SourceImage: conf.SourceImage,
 		Disks: []gcpvm.Disk{
 			{
 				DiskType:   "pd-standard",
@@ -19,16 +49,16 @@ func main() {
 			},
 		},
 		Preemptible:   false,
-		Network:       "default",
-		Subnetwork:    "default",
+		Network:       conf.Network,
+		Subnetwork:    conf.Subnet,
 		UseInternalIP: false,
-		ImageProjects: []string{"engineering-lab"},
-		Project:       "engineering-lab",
-		Scopes:        []string{"https://www.googleapis.com/auth/cloud-platform"},
-		AccountFile:   "/home/spotter/gcp.json",
+		ImageProjects: []string{conf.Project},
+		Project:       conf.Project,
+		Scopes:        []string{conf.Scope},
+		AccountFile:   conf.AuthFile,
 	}
 
-	err := vm.Provision()
+	err = vm.Provision()
 	if err != nil {
 		fmt.Printf("Provision failed: %v\n", err)
 		return

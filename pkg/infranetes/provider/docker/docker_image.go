@@ -2,9 +2,11 @@ package docker
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
+	"github.com/golang/glog"
 	"golang.org/x/net/context"
 
 	dockerclient "github.com/docker/engine-api/client"
@@ -17,7 +19,8 @@ import (
 )
 
 type dockerImageProvider struct {
-	client *dockerclient.Client
+	client   *dockerclient.Client
+	imageMap map[string]string
 }
 
 func init() {
@@ -29,7 +32,8 @@ func NewDockerImageProvider() (provider.ImageProvider, error) {
 		return nil, err
 	} else {
 		dockerImageProvider := &dockerImageProvider{
-			client: client,
+			client:   client,
+			imageMap: make(map[string]string),
 		}
 
 		return dockerImageProvider, nil
@@ -90,6 +94,9 @@ func (d *dockerImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kub
 	resp := &kubeapi.ImageStatusResponse{
 		Image: images[0],
 	}
+
+	d.imageMap[resp.Image.Id] = req.Image.Image
+
 	return resp, nil
 }
 
@@ -129,4 +136,14 @@ func (d *dockerImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kub
 
 func (d *dockerImageProvider) Integrate(pp provider.PodProvider) bool {
 	return true
+}
+
+func (d *dockerImageProvider) Translate(spec *kubeapi.ImageSpec) (string, error) {
+	if ret, ok := d.imageMap[spec.Image]; ok {
+		return ret, nil
+	}
+
+	msg := fmt.Sprintf("Translate: Couldn't Translate: %v", spec.Image)
+	glog.Info(msg)
+	return "", errors.New(msg)
 }

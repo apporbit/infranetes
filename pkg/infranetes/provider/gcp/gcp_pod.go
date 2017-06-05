@@ -37,6 +37,7 @@ type gceConfig struct {
 	Project     string
 	Scope       string
 	AuthFile    string
+	Network     string
 	Subnet      string
 }
 
@@ -50,7 +51,7 @@ func NewGCPPodProvider() (provider.PodProvider, error) {
 
 	json.Unmarshal(file, &conf)
 
-	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" || conf.Subnet == "" {
+	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" || conf.Network == "" || conf.Subnet == "" {
 		msg := fmt.Sprintf("Failed to read in complete config file: conf = %+v", conf)
 		glog.Info(msg)
 		return nil, fmt.Errorf(msg)
@@ -67,6 +68,7 @@ func NewGCPPodProvider() (provider.PodProvider, error) {
 	}
 
 	return &gcpPodProvider{
+		config: &conf,
 		ipList: ipList,
 	}, nil
 }
@@ -140,22 +142,20 @@ func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluem
 	disk := []gcpvm.Disk{{DiskType: "pd-standard", DiskSizeGb: 10, AutoDelete: true}}
 
 	vm := &gcpvm.VM{
-		//Scopes:        []string{"https://www.googleapis.com/auth/cloud-platform"},
-		//AccountFile: "/root/gcp.json",
 		Name:          name,
 		Zone:          v.config.Zone,
 		MachineType:   "g1-small",
 		SourceImage:   v.config.SourceImage,
 		Disks:         disk,
 		Preemptible:   false,
-		Network:       "default",
+		Network:       v.config.Network,
 		Subnetwork:    v.config.Subnet,
 		UseInternalIP: false,
-		ImageProjects: []string{"engineering-lab"},
-		Project:       "engineering-lab",
+		ImageProjects: []string{v.config.Project},
+		Project:       v.config.Project,
 		Scopes:        []string{v.config.Scope},
 		AccountFile:   v.config.AuthFile,
-		Tags:          []string{"infranetes:true"},
+		Tags:          []string{"infranetes"},
 	}
 
 	podIp := v.ipList.Shift().(string)
