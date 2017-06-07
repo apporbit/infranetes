@@ -37,10 +37,10 @@ type podData struct {
 }
 
 type awsPodProvider struct {
-	config *awsConfig
-	ipList *utils.Deque
-	amiPod bool
-	key    string
+	config   *awsConfig
+	ipList   *utils.Deque
+	imagePod bool
+	key      string
 }
 
 func init() {
@@ -220,7 +220,7 @@ func (v *awsPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volume
 
 	vm := v.createVM(req.Config, podIp)
 
-	if !v.amiPod { // Traditional Pod, but within a VM
+	if !v.imagePod { // Traditional Pod, but within a VM
 		ret, err := v.bootSandbox(vm, req.Config, podIp, volumes)
 
 		if err == nil { //i.e. boot succeeded
@@ -258,7 +258,7 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 
 	// This function is really only for when amiPod == true and this pod hasn't been booted yet (i.e. only one container)
 	// The below check enforces that.  Errors out if more than one "container" is used for an amiPod and just returns if not an amiPod
-	if v.amiPod == true {
+	if v.imagePod == true {
 		if data.Booted {
 			msg := "Trying to launch another container into a virtual machine"
 			glog.Infof("PreCreateContainer: %v", msg)
