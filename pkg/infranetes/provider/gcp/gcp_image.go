@@ -1,4 +1,4 @@
-package aws
+package gcp
 
 import (
 	"encoding/json"
@@ -8,76 +8,50 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	compute "google.golang.org/api/compute/v1"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
-type awsImageProvider struct {
-	lock     sync.RWMutex
+type gcpImageProvider struct {
+	lock sync.RWMutex
+
+	config   *GceConfig
 	imageMap map[string]*kubeapi.Image
 }
 
 func init() {
-	provider.ImageProviders.RegisterProvider("aws", NewAWSImageProvider)
+	provider.ImageProviders.RegisterProvider("gcp", NewGCPImageProvider)
 }
 
-func NewAWSImageProvider() (provider.ImageProvider, error) {
-	var conf awsConfig
+func NewGCPImageProvider() (provider.ImageProvider, error) {
+	var conf GceConfig
 
-	/* Depends on aws pod provider, so it should init the ec2 client var correctly */
-	if client == nil {
-		return nil, errors.New("ec2 client var wasn't initialized, awsPodProver should have done that")
-	}
-
-	file, err := ioutil.ReadFile("aws.json")
+	file, err := ioutil.ReadFile("gce.json")
 	if err != nil {
 		return nil, fmt.Errorf("File error: %v\n", err)
 	}
 
 	json.Unmarshal(file, &conf)
 
-	if conf.Region == "" {
+	if conf.SourceImage == "" || conf.Zone == "" || conf.Project == "" || conf.Scope == "" || conf.AuthFile == "" || conf.Network == "" || conf.Subnet == "" {
 		msg := fmt.Sprintf("Failed to read in complete config file: conf = %+v", conf)
 		glog.Info(msg)
 		return nil, fmt.Errorf(msg)
 	}
 
-	provider := &awsImageProvider{
+	provider := &gcpImageProvider{
+		config:   &conf,
 		imageMap: make(map[string]*kubeapi.Image),
 	}
 
 	return provider, nil
 }
 
-func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
-	if image == nil {
-		return nil, errors.New("unable to convert a nil pointer to a runtime API image")
-	}
-
-	size := uint64(0)
-
-	name := image.ImageId
-	for _, tag := range image.Tags {
-		if *tag.Key == "infranetes.image_name" {
-			name = tag.Value
-			break
-		}
-	}
-
-	return &kubeapi.Image{
-		Id:          *image.ImageId,
-		RepoTags:    []string{*name},
-		RepoDigests: []string{*image.ImageId},
-		Size_:       size,
-	}, nil
-}
-
-func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
+func (p *gcpImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -100,7 +74,7 @@ func (p *awsImageProvider) ListImages(req *kubeapi.ListImagesRequest) (*kubeapi.
 	return resp, nil
 }
 
-func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
+func (p *gcpImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error) {
 	name := req.Image.Image
 
 	if len(strings.Split(name, ":")) == 1 {
@@ -129,35 +103,52 @@ func (p *awsImageProvider) ImageStatus(req *kubeapi.ImageStatusRequest) (*kubeap
 	}
 }
 
-func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
-	ec2Req := &ec2.DescribeImagesInput{}
+func toRuntimeAPIImage(image *compute.Image) (*kubeapi.Image, error) {
+	if image == nil {
+		return nil, errors.New("unable to convert a nil pointer to a runtime API image")
+	}
+
+	size := uint64(image.ArchiveSizeBytes)
+
+	name := image.Name
+
+	return &kubeapi.Image{
+		Id:          name,
+		RepoTags:    []string{name},
+		RepoDigests: []string{name},
+		Size_:       size,
+	}, nil
+}
+
+func (p *gcpImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
+	var call *compute.ImagesListCall
+
+	s, err := GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
 
 	splits := strings.Split(req.Image.Image, "/")
 	switch len(splits) {
 	case 1:
-		ec2Req.Owners = []*string{aws.String("self")}
-		ec2Req.Filters = []*ec2.Filter{{Name: aws.String("tag:infranetes.image_name"), Values: []*string{&splits[0]}}}
+		call = s.service.Images.List(s.project).Filter("name eq " + splits[0])
 		break
 	case 2:
-		ec2Req.Owners = []*string{aws.String(splits[0])}
-		ec2Req.Filters = []*ec2.Filter{{Name: aws.String("tag:infranetes.image_name"), Values: []*string{&splits[1]}}}
+		call = s.service.Images.List(splits[0]).Filter("name eq " + splits[1])
 		break
 	default:
 		return nil, fmt.Errorf("PullImage: can't parse %v", req.Image.Image)
 	}
 
-	ec2Results, err := client.DescribeImages(ec2Req)
+	results, err := call.Do()
 	if err != nil {
 		return nil, fmt.Errorf("PullImage: ec2 DescribeImages failed: %v", err)
 	}
 
-	switch len(ec2Results.Images) {
+	switch len(results.Items) {
 	case 0:
 		return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", req.Image.Image)
 	case 1:
 		p.lock.Lock()
 		defer p.lock.Unlock()
-		image, err := toRuntimeAPIImage(ec2Results.Images[0])
+		image, err := toRuntimeAPIImage(results.Items[0])
 		if err != nil {
 			return nil, fmt.Errorf("PullImage: toRuntimeAPIImage failed: %v", err)
 		}
@@ -165,11 +156,11 @@ func (p *awsImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.Pu
 
 		return &kubeapi.PullImageResponse{}, nil
 	default:
-		return nil, fmt.Errorf("PullImage: ec2.DescribeImages returned more than one image: %+v", ec2Results.Images)
+		return nil, fmt.Errorf("PullImage: ec2.DescribeImages returned more than one image: %+v", results.Items)
 	}
 }
 
-func (p *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
+func (p *gcpImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -178,10 +169,10 @@ func (p *awsImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeap
 	return &kubeapi.RemoveImageResponse{}, nil
 }
 
-func (p *awsImageProvider) Integrate(pp provider.PodProvider) bool {
+func (p *gcpImageProvider) Integrate(pp provider.PodProvider) bool {
 	switch pp.(type) {
-	case *awsPodProvider:
-		app := pp.(*awsPodProvider)
+	case *gcpPodProvider:
+		app := pp.(*gcpPodProvider)
 		//aws shouldn't boot on pod run if using container images
 		app.imagePod = true
 
@@ -191,6 +182,6 @@ func (p *awsImageProvider) Integrate(pp provider.PodProvider) bool {
 	return false
 }
 
-func (p *awsImageProvider) Translate(spec *kubeapi.ImageSpec) (string, error) {
+func (p *gcpImageProvider) Translate(spec *kubeapi.ImageSpec) (string, error) {
 	return spec.Image, nil
 }

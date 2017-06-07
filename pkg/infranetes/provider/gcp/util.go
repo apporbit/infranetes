@@ -17,6 +17,11 @@ import (
 	googlecloud "google.golang.org/api/compute/v1"
 )
 
+const (
+	infranetesLabelKey   = "infranetes"
+	infranetesLabelValue = "true"
+)
+
 var (
 	// OAuth token url.
 	tokenURL = "https://accounts.google.com/o/oauth2/token"
@@ -24,7 +29,7 @@ var (
 	OperationTimeout = 180
 )
 
-type accountFile struct {
+type account struct {
 	PrivateKey  string `json:"private_key"`
 	ClientEmail string `json:"client_email"`
 	ClientId    string `json:"client_id"`
@@ -35,7 +40,7 @@ func parseAccountJSON(result interface{}, jsonText string) error {
 	return dec.Decode(result)
 }
 
-func parseAccountFile(file *accountFile, account string) error {
+func parseAccountFile(file *account, account string) error {
 	if err := parseAccountJSON(file, account); err != nil {
 		if _, err = os.Stat(account); os.IsNotExist(err) {
 			return fmt.Errorf("error finding account file: %s", account)
@@ -61,13 +66,13 @@ type svcWrapper struct {
 	service *googlecloud.Service
 }
 
-func GetService(af string, p string, z string, scopes []string) (*svcWrapper, error) {
+func GetService(accountFile string, project string, zone string, scopes []string) (*svcWrapper, error) {
 	var err error
 	var client *http.Client
 
-	var account accountFile
+	var account account
 
-	if err = parseAccountFile(&account, af); err != nil {
+	if err = parseAccountFile(&account, accountFile); err != nil {
 		return nil, err
 	}
 
@@ -95,8 +100,8 @@ func GetService(af string, p string, z string, scopes []string) (*svcWrapper, er
 	}
 
 	return &svcWrapper{
-		project: p,
-		zone:    z,
+		project: project,
+		zone:    zone,
 		service: svc,
 	}, nil
 }
@@ -191,4 +196,101 @@ func delRoute(vm *gcp.VM) error {
 	}
 
 	return s.DelRoute(vm.Name)
+}
+
+func (s *svcWrapper) TagNewInstance(name string) error {
+	i, err := s.service.Instances.Get(s.project, s.zone, name).Do()
+	if err != nil {
+		return fmt.Errorf("TagNewInstance: Couldn't get instance: %v: %v", name, err)
+	}
+
+	req := &googlecloud.InstancesSetLabelsRequest{
+		LabelFingerprint: i.LabelFingerprint,
+		Labels:           map[string]string{infranetesLabelKey: infranetesLabelValue},
+	}
+
+	op, err := s.service.Instances.SetLabels(s.project, s.zone, name, req).Do()
+	err = s.waitForGlobalOperationReady(op.Name)
+	if err != nil {
+		return fmt.Errorf("TagNewInstance failed: %v", err)
+	}
+
+	return nil
+}
+
+func (s *svcWrapper) ListInstances() ([]*googlecloud.Instance, error) {
+	images := []*googlecloud.Instance{}
+
+	nextPageToken := ""
+
+	for {
+		list, err := s.service.Instances.List(s.project, s.zone).PageToken(nextPageToken).Do()
+		if err != nil {
+			return nil, fmt.Errorf("ListInstances failed: %v", err)
+		}
+
+		for _, i := range list.Items {
+			if i.Labels[infranetesLabelKey] == infranetesLabelValue {
+				images = append(images, i)
+			}
+		}
+
+		nextPageToken = list.NextPageToken
+
+		if nextPageToken == "" {
+			break
+		}
+	}
+
+	return images, nil
+}
+
+func (s *svcWrapper) CreateDisk(vol string, size int64) error {
+	d := &googlecloud.Disk{
+		Name:   vol,
+		SizeGb: size,
+	}
+	op, err := s.service.Disks.Insert(s.project, s.zone, d).Do()
+	if err != nil {
+		return err
+	}
+
+	err = s.waitForZoneOperationReady(op.Name)
+	if err != nil {
+		return fmt.Errorf("CreateDisk failed: %v", err)
+	}
+
+	return nil
+}
+
+func (s *svcWrapper) AttachDisk(vol string, instance string, device string) error {
+	// https://www.googleapis.com/compute/v1/
+	source := "projects/" + s.project + "/zones/" + s.zone + "/disks/" + vol
+	req := &googlecloud.AttachedDisk{
+		Source:     source,
+		DeviceName: device,
+	}
+	op, err := s.service.Instances.AttachDisk(s.project, s.zone, instance, req).Do()
+	if err != nil {
+		return err
+	}
+	err = s.waitForZoneOperationReady(op.Name)
+	if err != nil {
+		return fmt.Errorf("AttachDisk failed: %v", err)
+	}
+
+	return nil
+}
+
+func (s *svcWrapper) DetatchDisk(instance string, device string) error {
+	op, err := s.service.Instances.DetachDisk(s.project, s.zone, instance, device).Do()
+	if err != nil {
+		return err
+	}
+	err = s.waitForZoneOperationReady(op.Name)
+	if err != nil {
+		return fmt.Errorf("AttachDisk failed: %v", err)
+	}
+
+	return nil
 }

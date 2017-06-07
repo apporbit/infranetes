@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strconv"
+	"sync"
 
 	"github.com/golang/glog"
 
@@ -25,13 +26,18 @@ func init() {
 }
 
 type gcpPodProvider struct {
-	config *gceConfig
-	ipList *utils.Deque
+	config   *GceConfig
+	ipList   *utils.Deque
+	imagePod bool
 }
 
-type podData struct{}
+type podData struct {
+	lock       sync.Mutex
+	instanceId *string
+	volumes    []*types.Volume
+}
 
-type gceConfig struct {
+type GceConfig struct {
 	Zone        string
 	SourceImage string
 	Project     string
@@ -42,7 +48,7 @@ type gceConfig struct {
 }
 
 func NewGCPPodProvider() (provider.PodProvider, error) {
-	var conf gceConfig
+	var conf GceConfig
 
 	file, err := ioutil.ReadFile("gce.json")
 	if err != nil {
@@ -79,7 +85,19 @@ func (*gcpPodProvider) UpdatePodState(data *common.PodData) {
 	}
 }
 
-func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxConfig, name string) (*common.PodData, error) {
+func (p *gcpPodProvider) tagImage(name string) {
+	s, err := GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
+	if err != nil {
+		glog.Errorf("tagImage: failed to tag: %v", name)
+		return
+	}
+	err = s.TagNewInstance(name)
+	if err != nil {
+		glog.Errorf("tagImage: failed: %v", err)
+	}
+}
+
+func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxConfig, name string, volumes []*types.Volume) (*common.PodData, error) {
 	cAnno := common.ParseCommonAnnotations(config.Annotations)
 
 	if err := vm.Provision(); err != nil {
@@ -91,6 +109,8 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 		return nil, fmt.Errorf("CreatePodSandbox: error in GetIPs(): %v", err)
 	}
 
+	p.tagImage(vm.Name)
+
 	glog.Infof("CreatePodSandbox: ips = %v", ips)
 
 	// FIXME: Perhaps better way to choose public vs private ip
@@ -100,6 +120,11 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 	client, err := common.CreateRealClient(podIp)
 	if err != nil {
 		return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
+	}
+
+	providerData := &podData{
+		instanceId: &vm.Name,
+		volumes:    volumes,
 	}
 
 	err = client.SetSandboxConfig(config)
@@ -129,51 +154,137 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 
 	booted := true
 
-	providerData := &podData{}
-
 	podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
 
 	return podData, nil
 }
 
-// FIXME: add image support
-func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, voluems []*types.Volume) (*common.PodData, error) {
+func (v *gcpPodProvider) RunPodSandbox(req *kubeapi.RunPodSandboxRequest, volumes []*types.Volume) (*common.PodData, error) {
 	name := "infranetes-" + req.GetConfig().GetMetadata().GetUid()
+	podIp := v.ipList.Shift().(string)
+
 	disk := []gcpvm.Disk{{DiskType: "pd-standard", DiskSizeGb: 10, AutoDelete: true}}
 
 	vm := &gcpvm.VM{
-		Name:          name,
-		Zone:          v.config.Zone,
-		MachineType:   "g1-small",
-		SourceImage:   v.config.SourceImage,
-		Disks:         disk,
-		Preemptible:   false,
-		Network:       v.config.Network,
-		Subnetwork:    v.config.Subnet,
-		UseInternalIP: false,
-		ImageProjects: []string{v.config.Project},
-		Project:       v.config.Project,
-		Scopes:        []string{v.config.Scope},
-		AccountFile:   v.config.AuthFile,
-		Tags:          []string{"infranetes"},
+		Name:             name,
+		Zone:             v.config.Zone,
+		MachineType:      "g1-small",
+		SourceImage:      v.config.SourceImage,
+		Disks:            disk,
+		Preemptible:      false,
+		Network:          v.config.Network,
+		Subnetwork:       v.config.Subnet,
+		UseInternalIP:    false,
+		ImageProjects:    []string{v.config.Project},
+		Project:          v.config.Project,
+		Scopes:           []string{v.config.Scope},
+		AccountFile:      v.config.AuthFile,
+		Tags:             []string{"infranetes"},
+		PrivateIPAddress: podIp,
 	}
 
-	podIp := v.ipList.Shift().(string)
+	if !v.imagePod { // Traditional Pod, but within a VM
+		ret, err := v.bootSandbox(vm, req.Config, podIp, volumes)
+		if err == nil {
+			// FIXME: Google's version of elastic IP handling goes here
+		}
 
-	ret, err := v.bootSandbox(vm, req.Config, podIp)
-	if err == nil {
-		// FIXME: Google's version of elastic IP handling goes here
+		return ret, err
+	} else { // Booting a VM immage to appear as a Pod to K8s.  Can't boot it until container time
+		//FIXME: make generic later
+		providerData := &podData{volumes: volumes}
+
+		client, err := common.CreateFakeClient()
+		if err != nil { // Currently should be impossible to fail
+			return nil, err
+		}
+
+		booted := false
+
+		podData := common.NewPodData(vm, podIp, req.Config.Metadata, req.Config.Annotations, req.Config.Labels, podIp, req.Config.Linux, client, booted, providerData)
+
+		return podData, nil
 	}
-
-	return ret, err
 }
 
+// FIXME: if booting a VM here fails, do we want to fail the whole pod?
 func (v *gcpPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.CreateContainerRequest, imageStatus func(req *kubeapi.ImageStatusRequest) (*kubeapi.ImageStatusResponse, error)) error {
-	//FIXME: will when image support is added
+	data.BootLock.Lock()
+	defer data.BootLock.Unlock()
+
+	// FIXME: this should be made something that is passed into function later so don't have to do this for every pod provider
+	var volumes []*types.Volume
+	if providerData, ok := data.ProviderData.(*podData); ok {
+		volumes = providerData.volumes
+	}
+
+	// This function is really only for when amiPod == true and this pod hasn't been booted yet (i.e. only one container)
+	// The below check enforces that.  Errors out if more than one "container" is used for an amiPod and just returns if not an amiPod
+	if v.imagePod == true {
+		if data.Booted {
+			msg := "Trying to launch another container into a virtual machine"
+			glog.Infof("PreCreateContainer: %v", msg)
+			return errors.New(msg)
+		}
+	} else {
+		glog.Info("PreCreateContainer: shortcutting as not an amiPod")
+		return nil
+	}
+
+	// Image Case
+	vm, ok := data.VM.(*gcpvm.VM)
+	if !ok {
+		return errors.New("PreCreateContainer: podData's VM wasn't an aws VM struct")
+	}
+
+	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
+	if err == nil && len(result.Image.RepoTags) == 1 {
+		glog.Infof("PreCreateContainer: translated %v to %v", req.Config.Image.Image, result.Image.Id)
+		vm.SourceImage = result.Image.Id
+	} else {
+		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", req.Config.Image.Image, err, result)
+	}
+
+	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip, volumes)
+	if err != nil {
+		return fmt.Errorf("PreCreateContainer: couldn't boot VM: %v", err)
+	}
+
+	// FIXME: Google's version of elastic IP handling goes here
+	//handleElasticIP(req.GetSandboxConfig(), vm.GetName())
+
+	data.Booted = true
+
+	data.Client = newPodData.Client
+	data.ProviderData = newPodData.ProviderData
+
 	return nil
 }
+func (v *gcpPodProvider) StopPodSandbox(pdata *common.PodData) {
+	providerData, ok := pdata.ProviderData.(*podData)
+	providerData.lock.Lock()
+	defer providerData.lock.Unlock()
 
-func (v *gcpPodProvider) StopPodSandbox(podData *common.PodData) {}
+	if !ok {
+		glog.Warningf("StopPodSandbox: couldn't type assert ProviderData to podData")
+		return
+	}
+
+	for _, vol := range providerData.volumes {
+		if vol.MountPoint != "" {
+			err := pdata.Client.UnmountFs(vol.MountPoint)
+			if err != nil {
+				glog.Warningf("StopPodSandbox: couldn't unmount %v on %v", vol.MountPoint, *providerData.instanceId)
+			}
+		}
+		err := providerData.detach(vol.Volume, true)
+		if err != nil {
+			glog.Warningf("StopPodSandbox: couldn't detach %v from %v", vol.Volume, *providerData.instanceId)
+		}
+	}
+
+	providerData.volumes = nil
+}
 
 func (v *gcpPodProvider) RemovePodSandbox(data *common.PodData) {
 	glog.Infof("RemovePodSandbox: release IP: %v", data.Ip)
@@ -184,12 +295,66 @@ func (v *gcpPodProvider) RemovePodSandbox(data *common.PodData) {
 func (v *gcpPodProvider) PodSandboxStatus(podData *common.PodData) {}
 
 func (v *gcpPodProvider) ListInstances() ([]*common.PodData, error) {
-	//FIXME: Implement - Needs tagging
-	return nil, nil
+	glog.Infof("ListInstances: enter")
+	s, err := GetService(v.config.AuthFile, v.config.Project, v.config.Zone, []string{v.config.Scope})
+	if err != nil {
+		return nil, fmt.Errorf("ListInstances: GetServices failed: %v", err)
+	}
+
+	instances, err := s.ListInstances()
+	if err != nil {
+		return nil, err
+	}
+
+	podDatas := []*common.PodData{}
+	for _, instance := range instances {
+		podIp := instance.NetworkInterfaces[0].NetworkIP
+
+		client, err := common.CreateRealClient(podIp)
+		if err != nil {
+			return nil, fmt.Errorf("CreatePodSandbox: error in createClient(): %v", err)
+		}
+
+		podIp, err = client.GetPodIP()
+		if err != nil {
+			continue
+		}
+
+		config, err := client.GetSandboxConfig()
+		if err != nil {
+			continue
+		}
+
+		name := podIp
+
+		vm := &gcpvm.VM{
+			Name:        instance.Name,
+			Zone:        v.config.Zone,
+			Project:     v.config.Project,
+			Scopes:      []string{v.config.Scope},
+			AccountFile: v.config.AuthFile,
+		}
+
+		providerData := &podData{}
+
+		v.ipList.FindAndRemove(podIp)
+
+		glog.Infof("ListInstances: creating a podData for %v", name)
+		booted := true
+		podData := common.NewPodData(vm, name, config.Metadata, config.Annotations, config.Labels, podIp, config.Linux, client, booted, providerData)
+
+		podDatas = append(podDatas, podData)
+	}
+
+	return podDatas, nil
 }
 
 func (p *podData) Attach(vol, device string) (string, error) {
 	return "", errors.New("Attach: Not implemented yet")
+}
+
+func (p *podData) detach(vol string, force bool) error {
+	return errors.New("detach: Not implemented yet")
 }
 
 func (p *podData) NeedMount(vol string) bool {
