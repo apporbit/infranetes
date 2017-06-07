@@ -10,8 +10,10 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	compute "google.golang.org/api/compute/v1"
+
+	"github.com/sjpotter/infranetes/pkg/common/gcp"
+	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
@@ -19,7 +21,7 @@ import (
 type gcpImageProvider struct {
 	lock sync.RWMutex
 
-	config   *GceConfig
+	config   *gcp.GceConfig
 	imageMap map[string]*kubeapi.Image
 }
 
@@ -28,7 +30,7 @@ func init() {
 }
 
 func NewGCPImageProvider() (provider.ImageProvider, error) {
-	var conf GceConfig
+	var conf gcp.GceConfig
 
 	file, err := ioutil.ReadFile("gce.json")
 	if err != nil {
@@ -123,15 +125,15 @@ func toRuntimeAPIImage(image *compute.Image) (*kubeapi.Image, error) {
 func (p *gcpImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
 	var call *compute.ImagesListCall
 
-	s, err := GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
+	s, err := gcp.GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
 
 	splits := strings.Split(req.Image.Image, "/")
 	switch len(splits) {
 	case 1:
-		call = s.service.Images.List(s.project).Filter("name eq " + splits[0])
+		call = s.Service.Images.List(s.Project).Filter("name eq " + splits[0])
 		break
 	case 2:
-		call = s.service.Images.List(splits[0]).Filter("name eq " + splits[1])
+		call = s.Service.Images.List(splits[0]).Filter("name eq " + splits[1])
 		break
 	default:
 		return nil, fmt.Errorf("PullImage: can't parse %v", req.Image.Image)

@@ -29,6 +29,16 @@ var (
 	OperationTimeout = 180
 )
 
+type GceConfig struct {
+	Zone        string
+	SourceImage string
+	Project     string
+	Scope       string
+	AuthFile    string
+	Network     string
+	Subnet      string
+}
+
 type account struct {
 	PrivateKey  string `json:"private_key"`
 	ClientEmail string `json:"client_email"`
@@ -61,9 +71,9 @@ func parseAccountFile(file *account, account string) error {
 }
 
 type svcWrapper struct {
-	project string
-	zone    string
-	service *googlecloud.Service
+	Project string
+	Zone    string
+	Service *googlecloud.Service
 }
 
 func GetService(accountFile string, project string, zone string, scopes []string) (*svcWrapper, error) {
@@ -100,9 +110,9 @@ func GetService(accountFile string, project string, zone string, scopes []string
 	}
 
 	return &svcWrapper{
-		project: project,
-		zone:    zone,
-		service: svc,
+		Project: project,
+		Zone:    zone,
+		Service: svc,
 	}, nil
 }
 
@@ -115,7 +125,7 @@ func (s *svcWrapper) AddRoute(name string, ip string) error {
 		NextHopInstance: "projects/engineering-lab/zones/us-central1-b/instances/" + name,
 	}
 
-	op, err := s.service.Routes.Insert(s.project, a).Do()
+	op, err := s.Service.Routes.Insert(s.Project, a).Do()
 	if err != nil {
 		return err
 	}
@@ -129,7 +139,7 @@ func (s *svcWrapper) AddRoute(name string, ip string) error {
 }
 
 func (s *svcWrapper) DelRoute(name string) error {
-	op, err := s.service.Routes.Delete(s.project, name).Do()
+	op, err := s.Service.Routes.Delete(s.Project, name).Do()
 	if err != nil {
 		return err
 	}
@@ -145,14 +155,14 @@ func (s *svcWrapper) DelRoute(name string) error {
 // waitForOperationReady waits for the regional operation to finish.
 func (s *svcWrapper) waitForZoneOperationReady(operation string) error {
 	return waitForOperation(OperationTimeout, func() (*googlecloud.Operation, error) {
-		return s.service.ZoneOperations.Get(s.project, s.zone, operation).Do()
+		return s.Service.ZoneOperations.Get(s.Project, s.Zone, operation).Do()
 	})
 }
 
 // waitForOperationReady waits for the global operation to finish.
 func (s *svcWrapper) waitForGlobalOperationReady(operation string) error {
 	return waitForOperation(OperationTimeout, func() (*googlecloud.Operation, error) {
-		return s.service.GlobalOperations.Get(s.project, operation).Do()
+		return s.Service.GlobalOperations.Get(s.Project, operation).Do()
 	})
 }
 
@@ -199,7 +209,7 @@ func delRoute(vm *gcp.VM) error {
 }
 
 func (s *svcWrapper) TagNewInstance(name string) error {
-	i, err := s.service.Instances.Get(s.project, s.zone, name).Do()
+	i, err := s.Service.Instances.Get(s.Project, s.Zone, name).Do()
 	if err != nil {
 		return fmt.Errorf("TagNewInstance: Couldn't get instance: %v: %v", name, err)
 	}
@@ -209,7 +219,7 @@ func (s *svcWrapper) TagNewInstance(name string) error {
 		Labels:           map[string]string{infranetesLabelKey: infranetesLabelValue},
 	}
 
-	op, err := s.service.Instances.SetLabels(s.project, s.zone, name, req).Do()
+	op, err := s.Service.Instances.SetLabels(s.Project, s.Zone, name, req).Do()
 	err = s.waitForGlobalOperationReady(op.Name)
 	if err != nil {
 		return fmt.Errorf("TagNewInstance failed: %v", err)
@@ -224,7 +234,7 @@ func (s *svcWrapper) ListInstances() ([]*googlecloud.Instance, error) {
 	nextPageToken := ""
 
 	for {
-		list, err := s.service.Instances.List(s.project, s.zone).PageToken(nextPageToken).Do()
+		list, err := s.Service.Instances.List(s.Project, s.Zone).PageToken(nextPageToken).Do()
 		if err != nil {
 			return nil, fmt.Errorf("ListInstances failed: %v", err)
 		}
@@ -250,7 +260,7 @@ func (s *svcWrapper) CreateDisk(vol string, size int64) error {
 		Name:   vol,
 		SizeGb: size,
 	}
-	op, err := s.service.Disks.Insert(s.project, s.zone, d).Do()
+	op, err := s.Service.Disks.Insert(s.Project, s.Zone, d).Do()
 	if err != nil {
 		return err
 	}
@@ -265,12 +275,12 @@ func (s *svcWrapper) CreateDisk(vol string, size int64) error {
 
 func (s *svcWrapper) AttachDisk(vol string, instance string, device string) error {
 	// https://www.googleapis.com/compute/v1/
-	source := "projects/" + s.project + "/zones/" + s.zone + "/disks/" + vol
+	source := "projects/" + s.Project + "/zones/" + s.Zone + "/disks/" + vol
 	req := &googlecloud.AttachedDisk{
 		Source:     source,
 		DeviceName: device,
 	}
-	op, err := s.service.Instances.AttachDisk(s.project, s.zone, instance, req).Do()
+	op, err := s.Service.Instances.AttachDisk(s.Project, s.Zone, instance, req).Do()
 	if err != nil {
 		return err
 	}
@@ -283,7 +293,7 @@ func (s *svcWrapper) AttachDisk(vol string, instance string, device string) erro
 }
 
 func (s *svcWrapper) DetatchDisk(instance string, device string) error {
-	op, err := s.service.Instances.DetachDisk(s.project, s.zone, instance, device).Do()
+	op, err := s.Service.Instances.DetachDisk(s.Project, s.Zone, instance, device).Do()
 	if err != nil {
 		return err
 	}
