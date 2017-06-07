@@ -13,6 +13,7 @@ import (
 	gcpvm "github.com/apcera/libretto/virtualmachine/gcp"
 
 	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
+	"github.com/sjpotter/infranetes/pkg/common/gcp"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
 	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
 	"github.com/sjpotter/infranetes/pkg/infranetes/types"
@@ -26,7 +27,7 @@ func init() {
 }
 
 type gcpPodProvider struct {
-	config   *GceConfig
+	config   *gcp.GceConfig
 	ipList   *utils.Deque
 	imagePod bool
 }
@@ -37,18 +38,8 @@ type podData struct {
 	volumes    []*types.Volume
 }
 
-type GceConfig struct {
-	Zone        string
-	SourceImage string
-	Project     string
-	Scope       string
-	AuthFile    string
-	Network     string
-	Subnet      string
-}
-
 func NewGCPPodProvider() (provider.PodProvider, error) {
-	var conf GceConfig
+	var conf gcp.GceConfig
 
 	file, err := ioutil.ReadFile("gce.json")
 	if err != nil {
@@ -86,7 +77,7 @@ func (*gcpPodProvider) UpdatePodState(data *common.PodData) {
 }
 
 func (p *gcpPodProvider) tagImage(name string) {
-	s, err := GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
+	s, err := gcp.GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
 	if err != nil {
 		glog.Errorf("tagImage: failed to tag: %v", name)
 		return
@@ -296,7 +287,7 @@ func (v *gcpPodProvider) PodSandboxStatus(podData *common.PodData) {}
 
 func (v *gcpPodProvider) ListInstances() ([]*common.PodData, error) {
 	glog.Infof("ListInstances: enter")
-	s, err := GetService(v.config.AuthFile, v.config.Project, v.config.Zone, []string{v.config.Scope})
+	s, err := gcp.GetService(v.config.AuthFile, v.config.Project, v.config.Zone, []string{v.config.Scope})
 	if err != nil {
 		return nil, fmt.Errorf("ListInstances: GetServices failed: %v", err)
 	}

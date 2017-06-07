@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/gcp"
+	"github.com/sjpotter/infranetes/pkg/common/gcp"
 
 	"github.com/sjpotter/infranetes/pkg/infranetes_flex"
 )
