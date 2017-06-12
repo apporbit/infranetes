@@ -45,10 +45,25 @@ var (
 	infraClient common.MountsClient
 )
 
+const (
+	logFile = "/tmp/flex.log"
+)
+
 // FIXME: can't handle attach like this, as doesn't return "device"
 func retOk() {
 	status := fv.DriverStatus{Status: fv.StatusSuccess}
 	b, _ := json.Marshal(status)
+	append(fmt.Sprintf("%v", string(b)))
+
+	fmt.Printf("%v", string(b))
+
+	os.Exit(0)
+}
+
+func retVolumeName(v string) {
+	status := fv.DriverStatus{Status: fv.StatusSuccess, VolumeName: v}
+	b, _ := json.Marshal(status)
+	append(fmt.Sprintf("%v", string(b)))
 
 	fmt.Printf("%v", string(b))
 
@@ -58,6 +73,7 @@ func retOk() {
 func retErr(s, m string) {
 	status := fv.DriverStatus{Status: s, Message: m}
 	b, _ := json.Marshal(status)
+	append(fmt.Sprintf("%v", string(b)))
 
 	fmt.Fprintf(os.Stderr, "%v", string(b))
 
@@ -88,6 +104,21 @@ func do_init() {
 	// FIXME: make sure infranetes supports us, possibly clear out table?
 
 	retOk()
+}
+
+func do_volume(flexopts string) {
+	j := []byte(flexopts)
+	opts := map[string]string{}
+	e := json.Unmarshal(j, &opts)
+	if e != nil {
+		retErr(fv.StatusFailure, "do_volume: Failed to unmarshall flexopts")
+	}
+
+	if _, ok := opts["volumeID"]; !ok {
+		retErr(fv.StatusFailure, "do_volume: no volumeID in flexopts")
+	}
+
+	retVolumeName(opts["volumeID"])
 }
 
 func do_mount(mntpnt, flexOpts string) {
@@ -256,7 +287,24 @@ func dial(file string) (*grpc.ClientConn, error) {
 	return conn, nil
 }
 
+func append(l string) {
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+
+	defer f.Close()
+
+	if _, err = f.WriteString(l + "\n"); err != nil {
+		panic(err)
+	}
+
+	f.Close()
+}
+
 func main() {
+	append(fmt.Sprintf("%v", os.Args))
+
 	// Needed?
 	flag.Parse()
 
@@ -286,17 +334,22 @@ func main() {
 		//retErr(fv.StatusNotSupported, "Ignoring attach-detach for now")
 		retErr(fv.StatusNotSupported, "")
 	case "mount":
-		if len(os.Args) != 5 {
+		if len(os.Args) != 4 {
 			retErr(fv.StatusFailure, "mount needs 3 arguments")
 		}
-		do_mount(os.Args[2], os.Args[4])
+		do_mount(os.Args[2], os.Args[3])
 	case "unmount":
 		if len(os.Args) != 3 {
 			retErr(fv.StatusFailure, "unmount needs 1 arguments")
 		}
 
 		do_umount(os.Args[2])
+	case "getvolumename":
+		if len(os.Args) != 3 {
+			retErr(fv.StatusFailure, "getvolumename needs 1 arguments")
+		}
+		do_volume(os.Args[2])
 	default:
-		retErr(fv.StatusFailure, fmt.Sprintf("Unknown Command: %v", os.Args[1]))
+		retErr(fv.StatusNotSupported, fmt.Sprintf("Unknown Command: %v", os.Args[1]))
 	}
 }

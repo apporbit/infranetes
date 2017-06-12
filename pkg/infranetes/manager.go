@@ -1,6 +1,7 @@
 package infranetes
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -24,7 +25,6 @@ import (
 
 var (
 	runtimeAPIVersion = "0.1.0"
-	supportedFSTypes  = map[string]bool{"nfs4": true}
 )
 
 type Manager struct {
@@ -179,12 +179,12 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 
 	logpath := filepath.Join(req.GetSandboxConfig().GetLogDirectory(), req.GetConfig().GetLogPath())
 
-	trans, err := m.contProvider.Translate(req.Config.Image)
+	translatedImage, err := m.contProvider.Translate(req.Config.Image)
 	if err != nil {
 		glog.Infof("createContainer: %v", err)
 		return nil, fmt.Errorf("%v", err)
 	}
-	req.Config.Image.Image = trans
+	req.Config.Image.Image = translatedImage
 
 	resp, err := m.createContainer(podData, req)
 
@@ -193,19 +193,6 @@ func (m *Manager) CreateContainer(ctx context.Context, req *kubeapi.CreateContai
 	glog.Infof("CreateContainer: resp = %+v, err = %v", resp, err)
 
 	return resp, err
-}
-
-func isReadOnly(opts string) bool {
-	ret := false
-
-	splits := strings.Split(opts, ",")
-	for _, split := range splits {
-		if split == "ro" {
-			ret = true
-		}
-	}
-
-	return ret
 }
 
 func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContainerRequest) (*kubeapi.StartContainerResponse, error) {
@@ -228,7 +215,7 @@ func (m *Manager) StartContainer(ctx context.Context, req *kubeapi.StartContaine
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.StartContainer(req)
@@ -269,7 +256,7 @@ func (m *Manager) StopContainer(ctx context.Context, req *kubeapi.StopContainerR
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.StopContainer(req)
@@ -299,7 +286,7 @@ func (m *Manager) RemoveContainer(ctx context.Context, req *kubeapi.RemoveContai
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.RemoveContainer(req)
@@ -340,7 +327,7 @@ func (m *Manager) ContainerStatus(ctx context.Context, req *kubeapi.ContainerSta
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("CreateContainer: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("CreateContainer: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.ContainerStatus(req)
@@ -368,7 +355,7 @@ func (m *Manager) ExecSync(ctx context.Context, req *kubeapi.ExecSyncRequest) (*
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("ExecSync: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("ExecSync: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.ExecSync(req)
@@ -397,7 +384,7 @@ func (m *Manager) Exec(ctx context.Context, req *kubeapi.ExecRequest) (*kubeapi.
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("Exec: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("Exec: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.Exec(req)
@@ -426,7 +413,7 @@ func (m *Manager) Attach(ctx context.Context, req *kubeapi.AttachRequest) (*kube
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("Attach: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("Attach: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.Attach(req)
@@ -452,7 +439,7 @@ func (m *Manager) PortForward(ctx context.Context, req *kubeapi.PortForwardReque
 
 	client := podData.Client
 	if client == nil {
-		return nil, fmt.Errorf("PortForward: nil client, must be a removed pod sandbox?")
+		return nil, errors.New("PortForward: nil client, must be a removed pod sandbox?")
 	}
 
 	resp, err := client.PortForward(req)
@@ -491,11 +478,11 @@ func (m *Manager) Status(ctx context.Context, req *kubeapi.StatusRequest) (*kube
 }
 
 func (m *Manager) ListImages(ctx context.Context, req *kubeapi.ListImagesRequest) (*kubeapi.ListImagesResponse, error) {
-	//	glog.Infof("ListImages: req = %+v", req)
+	//glog.Infof("ListImages: req = %+v", req)
 
 	resp, err := m.contProvider.ListImages(req)
 
-	//	glog.Infof("ListImages: resp = %+v, err = %v", resp, err)
+	//glog.Infof("ListImages: resp = %+v, err = %v", resp, err)
 
 	return resp, err
 }
@@ -532,7 +519,7 @@ func (m *Manager) RemoveImage(ctx context.Context, req *kubeapi.RemoveImageReque
 
 // ImageFsInfo returns information of the filesystem that is used to store images.
 func (m *Manager) ImageFsInfo(ctx context.Context, req *kubeapi.ImageFsInfoRequest) (*kubeapi.ImageFsInfoResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+	return nil, errors.New("not implemented")
 }
 
 func (m *Manager) GetMetrics(ctx context.Context, req *icommon.GetMetricsRequest) (*icommon.GetMetricsResponse, error) {

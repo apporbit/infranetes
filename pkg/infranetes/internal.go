@@ -14,6 +14,10 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
+var (
+	supportedNetworkMounts = map[string]bool{"nfs4": true}
+)
+
 func (m *Manager) importSandboxes() {
 	podDatas, err := m.podProvider.ListInstances()
 
@@ -60,8 +64,7 @@ func (m *Manager) stopSandbox(req *kubeapi.StopPodSandboxRequest) (*kubeapi.Stop
 	podData.Lock()
 	defer podData.Unlock()
 
-	// Should turn this into a single call to the VM - i.e. StopAllContainers()
-
+	// FIXME: Should turn this into a single call to the VM - i.e. StopAllContainers()
 	client := podData.Client
 	if client == nil { // This sandbox has been stopped
 		msg := fmt.Sprintf("stopSandbox: got nil client for %s", podId)
@@ -108,8 +111,10 @@ func (m *Manager) removePodSandbox(req *kubeapi.RemovePodSandboxRequest) error {
 	sandboxId := req.GetPodSandboxId()
 	uuid := podData.Metadata.Uid
 
-	if err := podData.VM.Destroy(); err != nil {
-		return fmt.Errorf("removePodSandbox: %v", err)
+	if podData.Booted {
+		if err := podData.VM.Destroy(); err != nil {
+			return fmt.Errorf("removePodSandbox: %v", err)
+		}
 	}
 
 	podData.RemovePod()
@@ -186,6 +191,19 @@ func (m *Manager) preCreateContainer(data *common.PodData, req *kubeapi.CreateCo
 	return m.podProvider.PreCreateContainer(data, req, m.contProvider.ImageStatus)
 }
 
+func isReadOnly(opts string) bool {
+	ret := false
+
+	splits := strings.Split(opts, ",")
+	for _, split := range splits {
+		if split == "ro" {
+			ret = true
+		}
+	}
+
+	return ret
+}
+
 func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateContainerRequest) (*kubeapi.CreateContainerResponse, error) {
 	if err := m.preCreateContainer(podData, req); err != nil {
 		return nil, fmt.Errorf("CreateContainer: %v", err)
@@ -204,7 +222,7 @@ func (m *Manager) createContainer(podData *common.PodData, req *kubeapi.CreateCo
 	knownMounts := make(map[string]*mount.Info)
 	if err == nil {
 		for _, info := range infos {
-			if !supportedFSTypes[info.Fstype] {
+			if !supportedNetworkMounts[info.Fstype] {
 				continue
 			}
 			knownMounts[info.Mountpoint] = info

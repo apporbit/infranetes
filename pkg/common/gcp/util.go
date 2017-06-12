@@ -70,13 +70,13 @@ func parseAccountFile(file *account, account string) error {
 	return nil
 }
 
-type svcWrapper struct {
+type GcpSvcWrapper struct {
 	Project string
 	Zone    string
 	Service *googlecloud.Service
 }
 
-func GetService(accountFile string, project string, zone string, scopes []string) (*svcWrapper, error) {
+func GetService(accountFile string, project string, zone string, scopes []string) (*GcpSvcWrapper, error) {
 	var err error
 	var client *http.Client
 
@@ -109,14 +109,14 @@ func GetService(accountFile string, project string, zone string, scopes []string
 		return nil, err
 	}
 
-	return &svcWrapper{
+	return &GcpSvcWrapper{
 		Project: project,
 		Zone:    zone,
 		Service: svc,
 	}, nil
 }
 
-func (s *svcWrapper) AddRoute(name string, ip string) error {
+func (s *GcpSvcWrapper) AddRoute(name string, ip string) error {
 	a := &googlecloud.Route{
 		Kind:            "compute#route",
 		Name:            name,
@@ -138,7 +138,7 @@ func (s *svcWrapper) AddRoute(name string, ip string) error {
 	return nil
 }
 
-func (s *svcWrapper) DelRoute(name string) error {
+func (s *GcpSvcWrapper) DelRoute(name string) error {
 	op, err := s.Service.Routes.Delete(s.Project, name).Do()
 	if err != nil {
 		return err
@@ -153,14 +153,14 @@ func (s *svcWrapper) DelRoute(name string) error {
 }
 
 // waitForOperationReady waits for the regional operation to finish.
-func (s *svcWrapper) waitForZoneOperationReady(operation string) error {
+func (s *GcpSvcWrapper) waitForZoneOperationReady(operation string) error {
 	return waitForOperation(OperationTimeout, func() (*googlecloud.Operation, error) {
 		return s.Service.ZoneOperations.Get(s.Project, s.Zone, operation).Do()
 	})
 }
 
 // waitForOperationReady waits for the global operation to finish.
-func (s *svcWrapper) waitForGlobalOperationReady(operation string) error {
+func (s *GcpSvcWrapper) waitForGlobalOperationReady(operation string) error {
 	return waitForOperation(OperationTimeout, func() (*googlecloud.Operation, error) {
 		return s.Service.GlobalOperations.Get(s.Project, operation).Do()
 	})
@@ -208,7 +208,7 @@ func delRoute(vm *gcp.VM) error {
 	return s.DelRoute(vm.Name)
 }
 
-func (s *svcWrapper) TagNewInstance(name string) error {
+func (s *GcpSvcWrapper) TagNewInstance(name string) error {
 	i, err := s.Service.Instances.Get(s.Project, s.Zone, name).Do()
 	if err != nil {
 		return fmt.Errorf("TagNewInstance: Couldn't get instance: %v: %v", name, err)
@@ -228,7 +228,7 @@ func (s *svcWrapper) TagNewInstance(name string) error {
 	return nil
 }
 
-func (s *svcWrapper) ListInstances() ([]*googlecloud.Instance, error) {
+func (s *GcpSvcWrapper) ListInstances() ([]*googlecloud.Instance, error) {
 	images := []*googlecloud.Instance{}
 
 	nextPageToken := ""
@@ -255,7 +255,7 @@ func (s *svcWrapper) ListInstances() ([]*googlecloud.Instance, error) {
 	return images, nil
 }
 
-func (s *svcWrapper) CreateDisk(vol string, size int64) error {
+func (s *GcpSvcWrapper) CreateDisk(vol string, size int64) error {
 	d := &googlecloud.Disk{
 		Name:   vol,
 		SizeGb: size,
@@ -273,7 +273,7 @@ func (s *svcWrapper) CreateDisk(vol string, size int64) error {
 	return nil
 }
 
-func (s *svcWrapper) AttachDisk(vol string, instance string, device string) error {
+func (s *GcpSvcWrapper) AttachDisk(vol string, instance string, device string) error {
 	// https://www.googleapis.com/compute/v1/
 	source := "projects/" + s.Project + "/zones/" + s.Zone + "/disks/" + vol
 	req := &googlecloud.AttachedDisk{
@@ -292,7 +292,7 @@ func (s *svcWrapper) AttachDisk(vol string, instance string, device string) erro
 	return nil
 }
 
-func (s *svcWrapper) DetatchDisk(instance string, device string) error {
+func (s *GcpSvcWrapper) DetatchDisk(instance string, device string) error {
 	op, err := s.Service.Instances.DetachDisk(s.Project, s.Zone, instance, device).Do()
 	if err != nil {
 		return err

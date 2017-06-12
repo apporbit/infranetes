@@ -22,6 +22,10 @@ import (
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 
+const (
+	devPrefix = "/dev/disk/by-id/google-"
+)
+
 func init() {
 	provider.PodProviders.RegisterProvider("gcp", NewGCPPodProvider)
 }
@@ -36,6 +40,8 @@ type podData struct {
 	lock       sync.Mutex
 	instanceId *string
 	volumes    []*types.Volume
+	attached   map[string]string
+	service    *gcp.GcpSvcWrapper
 }
 
 func NewGCPPodProvider() (provider.PodProvider, error) {
@@ -60,7 +66,7 @@ func NewGCPPodProvider() (provider.PodProvider, error) {
 	}
 
 	ipList := utils.NewDeque()
-	for i := 1; i <= 255; i++ {
+	for i := 2; i <= 254; i++ {
 		ipList.Append(fmt.Sprint(*flags.IPBase + "." + strconv.Itoa(i)))
 	}
 
@@ -91,8 +97,20 @@ func (p *gcpPodProvider) tagImage(name string) {
 func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxConfig, name string, volumes []*types.Volume) (*common.PodData, error) {
 	cAnno := common.ParseCommonAnnotations(config.Annotations)
 
+	s, err := gcp.GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
+	if err != nil {
+		return nil, fmt.Errorf("CreatePodSandbox: failed to get gcp service")
+	}
+
+	// Testing
+	attached := make(map[string]string)
+	for _, v := range volumes {
+		vm.Disks = append(vm.Disks, gcpvm.Disk{AutoDelete: false, Name: v.Volume})
+		attached[v.Volume] = devPrefix + v.Volume
+	}
+
 	if err := vm.Provision(); err != nil {
-		return nil, fmt.Errorf("failed to provision vm: %v\n", err)
+		return nil, fmt.Errorf("CreatePodSandbox: failed to provision vm: %v\n", err)
 	}
 
 	ips, err := vm.GetIPs()
@@ -116,11 +134,24 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 	providerData := &podData{
 		instanceId: &vm.Name,
 		volumes:    volumes,
+		attached:   attached, // attached:   make(map[string]string),
+		service:    s,
 	}
 
 	err = client.SetSandboxConfig(config)
 	if err != nil {
 		glog.Warningf("CreatePodSandbox: Failed to save sandbox config: %v", err)
+	}
+
+	// Testing
+	for _, vol := range volumes {
+		if vol.MountPoint != "" {
+			device := providerData.attached[vol.Volume]
+			err := client.MountFs(device, vol.MountPoint, vol.FsType, vol.ReadOnly)
+			if err != nil {
+				glog.Warningf("bootSandbox: failed to mount %v(%v) on %v in %v", vol.Volume, device, vol.MountPoint, vm.InstanceID)
+			}
+		}
 	}
 
 	err = client.SetPodIP(podIp)
@@ -341,14 +372,43 @@ func (v *gcpPodProvider) ListInstances() ([]*common.PodData, error) {
 }
 
 func (p *podData) Attach(vol, device string) (string, error) {
-	return "", errors.New("Attach: Not implemented yet")
+	glog.Infof("Attach: enter: vol = %v, device = %v", vol, device)
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	if dev, ok := p.attached[vol]; ok {
+		if device != "" && dev == device {
+			return dev, nil
+		} else {
+			return "", fmt.Errorf("Attach: tried to attach %v to %v but already attached to %v", vol, device, dev)
+		}
+	}
+
+	device = devPrefix + vol
+
+	glog.Infof("Attaching to %v", device)
+	err := p.service.AttachDisk(vol, *p.instanceId, vol)
+	glog.Infof("Attach: AttachVolume succeeded")
+
+	p.attached[vol] = device
+
+	return device, err
 }
 
 func (p *podData) detach(vol string, force bool) error {
-	return errors.New("detach: Not implemented yet")
+	glog.Infof("detach: enter: vol = %v", vol)
+
+	device := devPrefix + vol
+	err := p.service.DetatchDisk(vol, device)
+
+	return err
 }
 
 func (p *podData) NeedMount(vol string) bool {
-	// FIXME: not implemented yet
-	return false
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	_, ok := p.attached[vol]
+
+	return !ok
 }

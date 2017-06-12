@@ -112,54 +112,88 @@ func toRuntimeAPIImage(image *compute.Image) (*kubeapi.Image, error) {
 
 	size := uint64(image.ArchiveSizeBytes)
 
-	name := image.Name
+	repoTag := image.Labels["infranetes-name"] + ":" + image.Labels["infranetes-version"]
+	glog.Infof("RepoTag = %v", repoTag)
 
 	return &kubeapi.Image{
-		Id:          name,
-		RepoTags:    []string{name},
-		RepoDigests: []string{name},
+		Id:          image.Name,
+		RepoTags:    []string{repoTag},
+		RepoDigests: []string{image.Name},
 		Size_:       size,
 	}, nil
 }
 
 func (p *gcpImageProvider) PullImage(req *kubeapi.PullImageRequest) (*kubeapi.PullImageResponse, error) {
-	var call *compute.ImagesListCall
-
 	s, err := gcp.GetService(p.config.AuthFile, p.config.Project, p.config.Zone, []string{p.config.Scope})
+	if err != nil {
+		return nil, fmt.Errorf("PullImage: can't get gcp service %v", err)
+	}
 
 	splits := strings.Split(req.Image.Image, "/")
+	var project string
+	var fullname string
 	switch len(splits) {
 	case 1:
-		call = s.Service.Images.List(s.Project).Filter("name eq " + splits[0])
+		project = s.Project
+		fullname = splits[0]
 		break
 	case 2:
-		call = s.Service.Images.List(splits[0]).Filter("name eq " + splits[1])
+		project = splits[0]
+		fullname = splits[1]
 		break
 	default:
 		return nil, fmt.Errorf("PullImage: can't parse %v", req.Image.Image)
 	}
 
-	results, err := call.Do()
-	if err != nil {
-		return nil, fmt.Errorf("PullImage: ec2 DescribeImages failed: %v", err)
-	}
-
-	switch len(results.Items) {
-	case 0:
-		return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", req.Image.Image)
+	splits = strings.Split(fullname, ":")
+	name := splits[0]
+	var version string
+	switch len(splits) {
 	case 1:
-		p.lock.Lock()
-		defer p.lock.Unlock()
-		image, err := toRuntimeAPIImage(results.Items[0])
-		if err != nil {
-			return nil, fmt.Errorf("PullImage: toRuntimeAPIImage failed: %v", err)
-		}
-		p.imageMap[req.Image.Image] = image
-
-		return &kubeapi.PullImageResponse{}, nil
+		version = "latest"
+		break
+	case 2:
+		version = splits[1]
+		break
 	default:
-		return nil, fmt.Errorf("PullImage: ec2.DescribeImages returned more than one image: %+v", results.Items)
+		return nil, fmt.Errorf("PullImage: can't parse %v", fullname)
 	}
+
+	glog.Infof("PullImage: Looking for name = %v and version = %v", name, version)
+
+	nextPageToken := ""
+
+	for {
+		list, err := s.Service.Images.List(project).PageToken(nextPageToken).Do()
+		if err != nil {
+			return nil, fmt.Errorf("ListInstances failed: %v", err)
+		}
+
+		for _, i := range list.Items {
+			glog.Infof("PullImage: image name = %v, image labels = %v", i.Name, i.Labels)
+			if i.Labels["infranetes-name"] == name && i.Labels["infranetes-version"] == version {
+				glog.Infof("PullImage: found with image %v", i.Name)
+				p.lock.Lock()
+				defer p.lock.Unlock()
+				image, err := toRuntimeAPIImage(i)
+				if err != nil {
+					return nil, fmt.Errorf("PullImage: toRuntimeAPIImage failed: %v", err)
+				}
+				p.imageMap[req.Image.Image] = image
+
+				return &kubeapi.PullImageResponse{ImageRef: i.Name}, nil
+			}
+			glog.Infof("skipped %v as %v != %v and $%v != %v", i.Name, name, i.Labels["infranetes-name"], version, i.Labels["infranetes-version"])
+		}
+
+		nextPageToken = list.NextPageToken
+
+		if nextPageToken == "" {
+			break
+		}
+	}
+
+	return nil, fmt.Errorf("PullImage: couldn't find any image matching %v", req.Image.Image)
 }
 
 func (p *gcpImageProvider) RemoveImage(req *kubeapi.RemoveImageRequest) (*kubeapi.RemoveImageResponse, error) {
