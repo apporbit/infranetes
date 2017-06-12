@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/pkg/vmserver/common"
+	"github.com/apporbit/infranetes/pkg/vmserver/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

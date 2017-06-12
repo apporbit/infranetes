@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/docker/pkg/mount"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

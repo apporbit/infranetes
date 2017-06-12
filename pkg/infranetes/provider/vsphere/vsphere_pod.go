@@ -12,9 +12,9 @@ import (
 	"github.com/apcera/libretto/ssh"
 	vsvm "github.com/apcera/libretto/virtualmachine/vsphere"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
-	"github.com/sjpotter/infranetes/pkg/infranetes/types"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider/common"
+	"github.com/apporbit/infranetes/pkg/infranetes/types"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

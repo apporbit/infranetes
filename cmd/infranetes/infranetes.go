@@ -10,17 +10,17 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
-	"github.com/sjpotter/infranetes/pkg/infranetes"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/cmd/infranetes/flags"
+	"github.com/apporbit/infranetes/pkg/infranetes"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
 	//Registered Providers
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/aws"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/docker"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/fake"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/gcp"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/virtualbox"
-	_ "github.com/sjpotter/infranetes/pkg/infranetes/provider/vsphere"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/aws"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/docker"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/fake"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/gcp"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/virtualbox"
+	_ "github.com/apporbit/infranetes/pkg/infranetes/provider/vsphere"
 )
 
 const (

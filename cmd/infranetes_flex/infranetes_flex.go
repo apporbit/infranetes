@@ -15,11 +15,11 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/infranetes_flex"
+	"github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/infranetes_flex"
 	fv "k8s.io/kubernetes/pkg/volume/flexvolume"
 
-	_ "github.com/sjpotter/infranetes/pkg/infranetes_flex/providers"
+	_ "github.com/apporbit/infranetes/pkg/infranetes_flex/providers"
 )
 
 type flexConfig struct {

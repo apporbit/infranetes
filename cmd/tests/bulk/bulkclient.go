@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/sjpotter/infranetes/cmd/tests/bulk/api"
+	"github.com/apporbit/infranetes/cmd/tests/bulk/api"
 )
 
 func main() {

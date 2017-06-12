@@ -12,12 +12,12 @@ import (
 
 	gcpvm "github.com/apcera/libretto/virtualmachine/gcp"
 
-	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
-	"github.com/sjpotter/infranetes/pkg/common/gcp"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/common"
-	"github.com/sjpotter/infranetes/pkg/infranetes/types"
-	"github.com/sjpotter/infranetes/pkg/utils"
+	"github.com/apporbit/infranetes/cmd/infranetes/flags"
+	"github.com/apporbit/infranetes/pkg/common/gcp"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider/common"
+	"github.com/apporbit/infranetes/pkg/infranetes/types"
+	"github.com/apporbit/infranetes/pkg/utils"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
@@ -149,7 +149,7 @@ func (p *gcpPodProvider) bootSandbox(vm *gcpvm.VM, config *kubeapi.PodSandboxCon
 			device := providerData.attached[vol.Volume]
 			err := client.MountFs(device, vol.MountPoint, vol.FsType, vol.ReadOnly)
 			if err != nil {
-				glog.Warningf("bootSandbox: failed to mount %v(%v) on %v in %v", vol.Volume, device, vol.MountPoint, vm.InstanceID)
+				glog.Warningf("bootSandbox: failed to mount %v(%v) on %v in %v", vol.Volume, device, vol.MountPoint, vm.Name)
 			}
 		}
 	}

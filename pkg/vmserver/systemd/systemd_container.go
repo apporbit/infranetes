@@ -16,9 +16,9 @@ import (
 	"github.com/coreos/go-systemd/unit"
 	"github.com/golang/glog"
 
-	icommon "github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/vmserver"
-	"github.com/sjpotter/infranetes/pkg/vmserver/common"
+	icommon "github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/vmserver"
+	"github.com/apporbit/infranetes/pkg/vmserver/common"
 
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 

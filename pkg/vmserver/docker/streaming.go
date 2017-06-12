@@ -13,8 +13,8 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/dockershim"
 	"k8s.io/kubernetes/pkg/kubelet/dockershim/libdocker"
 
-	icommon "github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/vmserver/common"
+	icommon "github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/vmserver/common"
 
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 )

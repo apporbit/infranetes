@@ -1,7 +1,7 @@
 package vsphere
 
 import (
-	"github.com/sjpotter/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/common"
 )
 
 type vsphereConfig struct {
