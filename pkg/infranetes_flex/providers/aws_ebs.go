@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes_flex"
+	"github.com/apporbit/infranetes/pkg/infranetes_flex"
 )
 
 func init() {

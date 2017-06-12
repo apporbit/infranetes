@@ -19,8 +19,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/sjpotter/infranetes/cmd/infranetes/flags"
-	"github.com/sjpotter/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/cmd/infranetes/flags"
+	"github.com/apporbit/infranetes/pkg/common"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

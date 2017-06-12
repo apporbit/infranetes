@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/sjpotter/infranetes/pkg/common"
 	"golang.org/x/net/context"
+
+	"github.com/apporbit/infranetes/pkg/common"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeproxy "k8s.io/kubernetes/cmd/kube-proxy/app"

@@ -3,7 +3,7 @@ package fake
 import (
 	"fmt"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

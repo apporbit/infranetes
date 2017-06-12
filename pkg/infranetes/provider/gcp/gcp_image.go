@@ -12,8 +12,8 @@ import (
 
 	compute "google.golang.org/api/compute/v1"
 
-	"github.com/sjpotter/infranetes/pkg/common/gcp"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/common/gcp"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

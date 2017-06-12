@@ -3,9 +3,9 @@ package common
 import (
 	"errors"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/vmserver"
-	"github.com/sjpotter/infranetes/pkg/vmserver/fake"
+	"github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/vmserver"
+	"github.com/apporbit/infranetes/pkg/vmserver/fake"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

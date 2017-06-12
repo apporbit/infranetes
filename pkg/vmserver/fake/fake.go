@@ -3,8 +3,8 @@ package fake
 import (
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/pkg/vmserver"
-	"github.com/sjpotter/infranetes/pkg/vmserver/common"
+	"github.com/apporbit/infranetes/pkg/vmserver"
+	"github.com/apporbit/infranetes/pkg/vmserver/common"
 )
 
 type fakeProvider struct {
