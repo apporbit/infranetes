@@ -8,7 +8,7 @@ import (
 
 	"github.com/hpcloud/tail"
 
-	"github.com/sjpotter/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/common"
 )
 
 func (d *dockerProvider) Logs(req *common.LogsRequest, stream common.VMServer_LogsServer) error {

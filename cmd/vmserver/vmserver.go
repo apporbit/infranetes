@@ -7,13 +7,13 @@ import (
 
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/cmd/vmserver/flags"
-	"github.com/sjpotter/infranetes/pkg/vmserver"
+	"github.com/apporbit/infranetes/cmd/vmserver/flags"
+	"github.com/apporbit/infranetes/pkg/vmserver"
 
 	// Registered providers
-	_ "github.com/sjpotter/infranetes/pkg/vmserver/docker"
-	_ "github.com/sjpotter/infranetes/pkg/vmserver/fake"
-	_ "github.com/sjpotter/infranetes/pkg/vmserver/systemd"
+	_ "github.com/apporbit/infranetes/pkg/vmserver/docker"
+	_ "github.com/apporbit/infranetes/pkg/vmserver/fake"
+	_ "github.com/apporbit/infranetes/pkg/vmserver/systemd"
 )
 
 const (

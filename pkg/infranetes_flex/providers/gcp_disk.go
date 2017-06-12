@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/sjpotter/infranetes/pkg/common/gcp"
+	"github.com/apporbit/infranetes/pkg/common/gcp"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes_flex"
+	"github.com/apporbit/infranetes/pkg/infranetes_flex"
 )
 
 func init() {

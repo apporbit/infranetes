@@ -12,8 +12,8 @@ import (
 	dockerclient "github.com/docker/engine-api/client"
 	dockertypes "github.com/docker/engine-api/types"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

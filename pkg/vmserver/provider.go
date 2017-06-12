@@ -7,7 +7,7 @@ import (
 
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
-	"github.com/sjpotter/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/common"
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
 

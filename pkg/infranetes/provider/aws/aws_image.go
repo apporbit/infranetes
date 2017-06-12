@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/golang/glog"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )

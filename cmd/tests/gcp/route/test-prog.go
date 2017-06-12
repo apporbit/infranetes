@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sjpotter/infranetes/pkg/infranetes/provider/gcp"
+	"github.com/apporbit/infranetes/pkg/infranetes/provider/gcp"
 )
 
 func main() {

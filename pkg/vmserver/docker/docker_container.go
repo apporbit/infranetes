@@ -23,9 +23,9 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/dockershim"
 	"k8s.io/kubernetes/pkg/kubelet/dockershim/libdocker"
 
-	"github.com/sjpotter/infranetes/pkg/common"
-	icommon "github.com/sjpotter/infranetes/pkg/common"
-	"github.com/sjpotter/infranetes/pkg/vmserver"
+	"github.com/apporbit/infranetes/pkg/common"
+	icommon "github.com/apporbit/infranetes/pkg/common"
+	"github.com/apporbit/infranetes/pkg/vmserver"
 
 	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
 )
