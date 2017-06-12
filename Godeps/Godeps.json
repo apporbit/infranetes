@@ -757,28 +757,28 @@
 		},
 		{
 			"ImportPath": "github.com/hpcloud/tail",
-			"Comment": "v1.0.0-2-g915e5fe",
-			"Rev": "915e5feba042395f5fda4dbe9c0e99aeab3088b3"
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		},
 		{
 			"ImportPath": "github.com/hpcloud/tail/ratelimiter",
-			"Comment": "v1.0.0-2-g915e5fe",
-			"Rev": "915e5feba042395f5fda4dbe9c0e99aeab3088b3"
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		},
 		{
 			"ImportPath": "github.com/hpcloud/tail/util",
-			"Comment": "v1.0.0-2-g915e5fe",
-			"Rev": "915e5feba042395f5fda4dbe9c0e99aeab3088b3"
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		},
 		{
 			"ImportPath": "github.com/hpcloud/tail/watch",
-			"Comment": "v1.0.0-2-g915e5fe",
-			"Rev": "915e5feba042395f5fda4dbe9c0e99aeab3088b3"
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		},
 		{
 			"ImportPath": "github.com/hpcloud/tail/winfile",
-			"Comment": "v1.0.0-2-g915e5fe",
-			"Rev": "915e5feba042395f5fda4dbe9c0e99aeab3088b3"
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		},
 		{
 			"ImportPath": "github.com/imdario/mergo",
@@ -3041,6 +3041,16 @@
 		{
 			"ImportPath": "vbom.ml/util/sortorder",
 			"Rev": "db5cfe13f5cc80a4990d98e2e1b0707a4d1a5394"
+		},
+		{
+			"ImportPath": "github.com/hpcloud/tail/vendor/gopkg.in/tomb.v1",
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
+		},
+		{
+			"ImportPath": "github.com/hpcloud/tail/vendor/gopkg.in/fsnotify.v1",
+			"Comment": "v1.0.0-9-gfaf842b",
+			"Rev": "faf842bde7ed83bbc3c65a2c454fae39bc29a95f"
 		}
 	]
 }

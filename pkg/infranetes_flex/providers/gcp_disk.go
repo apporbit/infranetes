@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	infranetes_flex.DevProviders.RegisterProvider("aws_ebs", NewGCPDiskProvider)
+	infranetes_flex.DevProviders.RegisterProvider("gcp_disk", NewGCPDiskProvider)
 }
 
 func NewGCPDiskProvider() (infranetes_flex.DevProvider, error) {
