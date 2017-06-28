@@ -15,11 +15,11 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
+	"github.com/apporbit/infranetes/pkg/common"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/apporbit/infranetes/pkg/common"
 	fv "k8s.io/kubernetes/pkg/volume/flexvolume"
 	"net/http"
 )
