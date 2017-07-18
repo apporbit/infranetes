@@ -6,7 +6,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 func (m *VMserver) startStreamingServer() error {

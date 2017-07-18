@@ -24,7 +24,7 @@ func main() {
 
 	vm := &aws.VM{
 		Name:         "libretto-aws",
-		AMI:          "ami-4a55fe2a",
+		AMI:          "ami-6df1e514",
 		InstanceType: "t2.micro",
 		SSHCreds: ssh.Credentials{
 			SSHUser:       "ubuntu",
@@ -37,8 +37,8 @@ func main() {
 		},
 		Region:        "us-west-2",
 		KeyPair:       strings.TrimSuffix(filepath.Base(*key), filepath.Ext(*key)),
-		SecurityGroup: "sg-abeee7d2",
-		Subnet:        "subnet-4c51463a",
+		SecurityGroups: []string{"sg-9272b4ea"},
+		Subnet:        "subnet-0efb9a56",
 	}
 
 	err = vm.Provision()

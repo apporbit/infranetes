@@ -23,7 +23,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/types"
 
 	"github.com/apporbit/infranetes/pkg/common"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 const statsCacheDuration = 2 * time.Minute
@@ -263,4 +263,13 @@ func (m *VMserver) GetMetrics(ctx context.Context, req *common.GetMetricsRequest
 	glog.Infof("GetMetrics: resp = %+v, err = %v", resp, err)
 
 	return resp, err
+}
+
+// TODO
+func (m *VMserver) ContainerStats(ctx context.Context, req *kubeapi.ContainerStatsRequest) (*kubeapi.ContainerStatsResponse, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
+func (m *VMserver) ListContainerStats(ctx context.Context, req *kubeapi.ListContainerStatsRequest) (*kubeapi.ListContainerStatsResponse, error) {
+	return nil, fmt.Errorf("Not implemented")
 }

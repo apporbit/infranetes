@@ -10,7 +10,7 @@ import (
 	lvm "github.com/apcera/libretto/virtualmachine"
 	"github.com/golang/glog"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type ProviderData interface {

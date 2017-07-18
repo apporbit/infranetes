@@ -381,8 +381,6 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	if err := Convert_v1alpha1_KubeletAuthorization_To_componentconfig_KubeletAuthorization(&in.Authorization, &out.Authorization, s); err != nil {
 		return err
 	}
-	out.PodInfraContainerImage = in.PodInfraContainerImage
-	out.DockerEndpoint = in.DockerEndpoint
 	out.RootDirectory = in.RootDirectory
 	out.SeccompProfileRoot = in.SeccompProfileRoot
 	if err := v1.Convert_Pointer_bool_To_bool(&in.AllowPrivileged, &out.AllowPrivileged, s); err != nil {
@@ -408,7 +406,9 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	if err := v1.Convert_Pointer_int32_To_int32(&in.MaxContainerCount, &out.MaxContainerCount, s); err != nil {
 		return err
 	}
-	out.CAdvisorPort = in.CAdvisorPort
+	if err := v1.Convert_Pointer_int32_To_int32(&in.CAdvisorPort, &out.CAdvisorPort, s); err != nil {
+		return err
+	}
 	out.HealthzPort = in.HealthzPort
 	out.HealthzBindAddress = in.HealthzBindAddress
 	if err := v1.Convert_Pointer_int32_To_int32(&in.OOMScoreAdj, &out.OOMScoreAdj, s); err != nil {
@@ -431,11 +431,6 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	}
 	out.LowDiskSpaceThresholdMB = in.LowDiskSpaceThresholdMB
 	out.VolumeStatsAggPeriod = in.VolumeStatsAggPeriod
-	out.NetworkPluginName = in.NetworkPluginName
-	out.NetworkPluginDir = in.NetworkPluginDir
-	out.CNIConfDir = in.CNIConfDir
-	out.CNIBinDir = in.CNIBinDir
-	out.NetworkPluginMTU = in.NetworkPluginMTU
 	out.VolumePluginDir = in.VolumePluginDir
 	out.CloudProvider = in.CloudProvider
 	out.CloudConfigFile = in.CloudConfigFile
@@ -451,18 +446,13 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	out.RemoteRuntimeEndpoint = in.RemoteRuntimeEndpoint
 	out.RemoteImageEndpoint = in.RemoteImageEndpoint
 	out.RuntimeRequestTimeout = in.RuntimeRequestTimeout
-	out.ImagePullProgressDeadline = in.ImagePullProgressDeadline
-	out.RktPath = in.RktPath
 	out.ExperimentalMounterPath = in.ExperimentalMounterPath
-	out.RktAPIEndpoint = in.RktAPIEndpoint
-	out.RktStage1Image = in.RktStage1Image
 	if err := v1.Convert_Pointer_string_To_string(&in.LockFilePath, &out.LockFilePath, s); err != nil {
 		return err
 	}
 	out.ExitOnLockContention = in.ExitOnLockContention
 	out.HairpinMode = in.HairpinMode
 	out.MaxPods = in.MaxPods
-	out.DockerExecHandlerName = in.DockerExecHandlerName
 	out.PodCIDR = in.PodCIDR
 	out.ResolverConfig = in.ResolverConfig
 	if err := v1.Convert_Pointer_bool_To_bool(&in.CPUCFSQuota, &out.CPUCFSQuota, s); err != nil {
@@ -516,15 +506,9 @@ func autoConvert_v1alpha1_KubeletConfiguration_To_componentconfig_KubeletConfigu
 	}
 	out.AllowedUnsafeSysctls = *(*[]string)(unsafe.Pointer(&in.AllowedUnsafeSysctls))
 	out.FeatureGates = in.FeatureGates
-	if err := v1.Convert_Pointer_bool_To_bool(&in.ExperimentalDockershim, &out.ExperimentalDockershim, s); err != nil {
-		return err
-	}
 	out.ExperimentalFailSwapOn = in.ExperimentalFailSwapOn
 	out.ExperimentalCheckNodeCapabilitiesBeforeMount = in.ExperimentalCheckNodeCapabilitiesBeforeMount
 	out.KeepTerminatedPodVolumes = in.KeepTerminatedPodVolumes
-	if err := v1.Convert_Pointer_bool_To_bool(&in.DockerDisableSharedPID, &out.DockerDisableSharedPID, s); err != nil {
-		return err
-	}
 	out.SystemReserved = *(*componentconfig.ConfigurationMap)(unsafe.Pointer(&in.SystemReserved))
 	out.KubeReserved = *(*componentconfig.ConfigurationMap)(unsafe.Pointer(&in.KubeReserved))
 	out.SystemReservedCgroup = in.SystemReservedCgroup
@@ -564,8 +548,6 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	if err := Convert_componentconfig_KubeletAuthorization_To_v1alpha1_KubeletAuthorization(&in.Authorization, &out.Authorization, s); err != nil {
 		return err
 	}
-	out.PodInfraContainerImage = in.PodInfraContainerImage
-	out.DockerEndpoint = in.DockerEndpoint
 	out.RootDirectory = in.RootDirectory
 	out.SeccompProfileRoot = in.SeccompProfileRoot
 	if err := v1.Convert_bool_To_Pointer_bool(&in.AllowPrivileged, &out.AllowPrivileged, s); err != nil {
@@ -603,7 +585,9 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	if err := v1.Convert_int32_To_Pointer_int32(&in.MaxContainerCount, &out.MaxContainerCount, s); err != nil {
 		return err
 	}
-	out.CAdvisorPort = in.CAdvisorPort
+	if err := v1.Convert_int32_To_Pointer_int32(&in.CAdvisorPort, &out.CAdvisorPort, s); err != nil {
+		return err
+	}
 	out.HealthzPort = in.HealthzPort
 	out.HealthzBindAddress = in.HealthzBindAddress
 	if err := v1.Convert_int32_To_Pointer_int32(&in.OOMScoreAdj, &out.OOMScoreAdj, s); err != nil {
@@ -630,11 +614,6 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	}
 	out.LowDiskSpaceThresholdMB = in.LowDiskSpaceThresholdMB
 	out.VolumeStatsAggPeriod = in.VolumeStatsAggPeriod
-	out.NetworkPluginName = in.NetworkPluginName
-	out.NetworkPluginMTU = in.NetworkPluginMTU
-	out.NetworkPluginDir = in.NetworkPluginDir
-	out.CNIConfDir = in.CNIConfDir
-	out.CNIBinDir = in.CNIBinDir
 	out.VolumePluginDir = in.VolumePluginDir
 	out.CloudProvider = in.CloudProvider
 	out.CloudConfigFile = in.CloudConfigFile
@@ -650,18 +629,13 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	out.RemoteRuntimeEndpoint = in.RemoteRuntimeEndpoint
 	out.RemoteImageEndpoint = in.RemoteImageEndpoint
 	out.RuntimeRequestTimeout = in.RuntimeRequestTimeout
-	out.ImagePullProgressDeadline = in.ImagePullProgressDeadline
-	out.RktPath = in.RktPath
 	out.ExperimentalMounterPath = in.ExperimentalMounterPath
-	out.RktAPIEndpoint = in.RktAPIEndpoint
-	out.RktStage1Image = in.RktStage1Image
 	if err := v1.Convert_string_To_Pointer_string(&in.LockFilePath, &out.LockFilePath, s); err != nil {
 		return err
 	}
 	out.ExitOnLockContention = in.ExitOnLockContention
 	out.HairpinMode = in.HairpinMode
 	out.MaxPods = in.MaxPods
-	out.DockerExecHandlerName = in.DockerExecHandlerName
 	out.PodCIDR = in.PodCIDR
 	out.ResolverConfig = in.ResolverConfig
 	if err := v1.Convert_bool_To_Pointer_bool(&in.CPUCFSQuota, &out.CPUCFSQuota, s); err != nil {
@@ -719,15 +693,9 @@ func autoConvert_componentconfig_KubeletConfiguration_To_v1alpha1_KubeletConfigu
 	}
 	out.AllowedUnsafeSysctls = *(*[]string)(unsafe.Pointer(&in.AllowedUnsafeSysctls))
 	out.FeatureGates = in.FeatureGates
-	if err := v1.Convert_bool_To_Pointer_bool(&in.ExperimentalDockershim, &out.ExperimentalDockershim, s); err != nil {
-		return err
-	}
 	out.ExperimentalFailSwapOn = in.ExperimentalFailSwapOn
 	out.ExperimentalCheckNodeCapabilitiesBeforeMount = in.ExperimentalCheckNodeCapabilitiesBeforeMount
 	out.KeepTerminatedPodVolumes = in.KeepTerminatedPodVolumes
-	if err := v1.Convert_bool_To_Pointer_bool(&in.DockerDisableSharedPID, &out.DockerDisableSharedPID, s); err != nil {
-		return err
-	}
 	out.SystemReserved = *(*map[string]string)(unsafe.Pointer(&in.SystemReserved))
 	out.KubeReserved = *(*map[string]string)(unsafe.Pointer(&in.KubeReserved))
 	out.SystemReservedCgroup = in.SystemReservedCgroup

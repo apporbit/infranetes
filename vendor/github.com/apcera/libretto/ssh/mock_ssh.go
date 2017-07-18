@@ -13,7 +13,7 @@ type MockSSHClient struct {
 	MockDisconnect func()
 	MockDownload   func(src io.WriteCloser, dst string) error
 	MockRun        func(command string, stdout io.Writer, stderr io.Writer) error
-	MockUpload     func(src io.Reader, dst string, mode uint32) error
+	MockUpload     func(src io.Reader, dst string, size int, mode uint32) error
 	MockValidate   func() error
 	MockWaitForSSH func(maxWait time.Duration) error
 
@@ -55,9 +55,9 @@ func (c *MockSSHClient) Run(command string, stdout io.Writer, stderr io.Writer) 
 }
 
 // Upload calls the mocked upload
-func (c *MockSSHClient) Upload(src io.Reader, dst string, mode uint32) error {
+func (c *MockSSHClient) Upload(src io.Reader, dst string, size int, mode uint32) error {
 	if c.MockUpload != nil {
-		return c.MockUpload(src, dst, mode)
+		return c.MockUpload(src, dst, size, mode)
 	}
 	return ErrNotImplemented
 }

@@ -222,6 +222,7 @@ func IsServiceIPRequested(service *api.Service) bool {
 var standardFinalizers = sets.NewString(
 	string(api.FinalizerKubernetes),
 	metav1.FinalizerOrphanDependents,
+	metav1.FinalizerDeleteDependents,
 )
 
 // HasAnnotation returns a bool if passed in annotation exists
@@ -590,6 +591,10 @@ func GetStorageNodeAffinityFromAnnotation(annotations map[string]string) (*api.N
 // Converts NodeAffinity type to Alpha annotation for use in PersistentVolumes
 // TODO: update when storage node affinity graduates to beta
 func StorageNodeAffinityToAlphaAnnotation(annotations map[string]string, affinity *api.NodeAffinity) error {
+	if affinity == nil {
+		return nil
+	}
+
 	json, err := json.Marshal(*affinity)
 	if err != nil {
 		return err

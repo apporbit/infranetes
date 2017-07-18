@@ -27,7 +27,7 @@ import (
 	icommon "github.com/apporbit/infranetes/pkg/common"
 	"github.com/apporbit/infranetes/pkg/vmserver"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type dockerProvider struct {

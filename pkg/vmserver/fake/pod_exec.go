@@ -8,7 +8,8 @@ import (
 	"github.com/apporbit/infranetes/pkg/vmserver/common"
 
 	"k8s.io/client-go/tools/remotecommand"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 )
 
