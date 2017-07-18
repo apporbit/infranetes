@@ -3,7 +3,7 @@ package docker
 import (
 	"fmt"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 func generateMountBindings(mounts []*kubeapi.Mount, sharedPaths map[string]bool) (result []string) {

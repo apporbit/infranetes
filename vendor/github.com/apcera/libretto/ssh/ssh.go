@@ -4,11 +4,9 @@ package ssh
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"path"
@@ -60,7 +58,7 @@ type Client interface {
 	Disconnect()
 	Download(src io.WriteCloser, dst string) error
 	Run(command string, stdout io.Writer, stderr io.Writer) error
-	Upload(src io.Reader, dst string, mode uint32) error
+	Upload(src io.Reader, dst string, size int, mode uint32) error
 	Validate() error
 	WaitForSSH(maxWait time.Duration) error
 
@@ -124,7 +122,6 @@ func (client *SSHClient) Connect() error {
 		Auth: []cssh.AuthMethod{
 			auth,
 		},
-		HostKeyCallback: cssh.InsecureIgnoreHostKey(),
 	}
 
 	port := sshPort
@@ -290,18 +287,14 @@ func (client *SSHClient) Run(command string, stdout io.Writer, stderr io.Writer)
 	return session.Run(command)
 }
 
-// Upload uploads a new file via SSH (SCP)
-func (client *SSHClient) Upload(src io.Reader, dst string, mode uint32) error {
-	fileContent, err := ioutil.ReadAll(src)
-	if err != nil {
-		return err
-	}
-
+// Upload uploads a new file via SSH (SCP). dst is the destination path for the
+// file on the remote machine. size is the number of bytes to be uploaded. mode
+// is the permissions the file should have, e.g. 0744.
+func (client *SSHClient) Upload(src io.Reader, dst string, size int, mode uint32) error {
 	session, err := client.cryptoClient.NewSession()
 	if err != nil {
 		return err
 	}
-
 	defer session.Close()
 
 	w, err := session.StdinPipe()
@@ -321,8 +314,8 @@ func (client *SSHClient) Upload(src io.Reader, dst string, mode uint32) error {
 		defer wg.Done()
 
 		// Signals to the SSH receiver that content is being passed.
-		fmt.Fprintf(w, "C%#o %d %s\n", mode, len(fileContent), remoteFileName)
-		_, err = io.Copy(w, bytes.NewReader(fileContent))
+		fmt.Fprintf(w, "C%#o %d %s\n", mode, size, remoteFileName)
+		_, err = io.Copy(w, src)
 		if err != nil {
 			errorChan <- err
 			return

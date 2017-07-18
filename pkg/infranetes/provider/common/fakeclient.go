@@ -7,7 +7,7 @@ import (
 	"github.com/apporbit/infranetes/pkg/vmserver"
 	"github.com/apporbit/infranetes/pkg/vmserver/fake"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type fakeClient struct {

@@ -27,22 +27,28 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1alpha1 "k8s.io/apimachinery/pkg/apis/meta/v1alpha1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/events"
 	"k8s.io/kubernetes/pkg/api/helper"
+	apiv1 "k8s.io/kubernetes/pkg/api/v1"
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/autoscaling"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/certificates"
 	"k8s.io/kubernetes/pkg/apis/extensions"
+	"k8s.io/kubernetes/pkg/apis/networking"
 	"k8s.io/kubernetes/pkg/apis/policy"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/apis/settings"
 	"k8s.io/kubernetes/pkg/apis/storage"
 	storageutil "k8s.io/kubernetes/pkg/apis/storage/util"
+	"k8s.io/kubernetes/pkg/controller"
 	"k8s.io/kubernetes/pkg/printers"
 	"k8s.io/kubernetes/pkg/util/node"
 )
@@ -52,8 +58,6 @@ const loadBalancerWidth = 16
 // NOTE: When adding a new resource type here, please update the list
 // pkg/kubectl/cmd/get.go to reflect the new resource type.
 var (
-	podColumns                       = []string{"NAME", "READY", "STATUS", "RESTARTS", "AGE"}
-	podWideColumns                   = []string{"IP", "NODE"}
 	podTemplateColumns               = []string{"TEMPLATE", "CONTAINER(S)", "IMAGE(S)", "PODLABELS"}
 	podDisruptionBudgetColumns       = []string{"NAME", "MIN-AVAILABLE", "MAX-UNAVAILABLE", "ALLOWED-DISRUPTIONS", "AGE"}
 	replicationControllerColumns     = []string{"NAME", "DESIRED", "CURRENT", "READY", "AGE"}
@@ -102,29 +106,24 @@ var (
 	networkPolicyColumns             = []string{"NAME", "POD-SELECTOR", "AGE"}
 	certificateSigningRequestColumns = []string{"NAME", "AGE", "REQUESTOR", "CONDITION"}
 	podPresetColumns                 = []string{"NAME", "AGE"}
+	controllerRevisionColumns        = []string{"NAME", "CONTROLLER", "REVISION", "AGE"}
 )
 
-func printPod(pod *api.Pod, w io.Writer, options printers.PrintOptions) error {
-	if err := printPodBase(pod, w, options); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func printPodList(podList *api.PodList, w io.Writer, options printers.PrintOptions) error {
-	for _, pod := range podList.Items {
-		if err := printPodBase(&pod, w, options); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // AddHandlers adds print handlers for default Kubernetes types dealing with internal versions.
-func AddHandlers(h *printers.HumanReadablePrinter) {
-	h.Handler(podColumns, podWideColumns, printPodList)
-	h.Handler(podColumns, podWideColumns, printPod)
+// TODO: handle errors from Handler
+func AddHandlers(h printers.PrintHandler) {
+	podColumnDefinitions := []metav1alpha1.TableColumnDefinition{
+		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
+		{Name: "Ready", Type: "string", Description: "The aggregate readiness state of this pod for accepting traffic."},
+		{Name: "Status", Type: "string", Description: "The aggregate status of the containers in this pod."},
+		{Name: "Restarts", Type: "integer", Description: "The number of times the containers in this pod have been restarted."},
+		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
+		{Name: "IP", Type: "string", Priority: 1, Description: apiv1.PodStatus{}.SwaggerDoc()["podIP"]},
+		{Name: "Node", Type: "string", Priority: 1, Description: apiv1.PodSpec{}.SwaggerDoc()["nodeName"]},
+	}
+	h.TableHandler(podColumnDefinitions, printPodList)
+	h.TableHandler(podColumnDefinitions, printPod)
+
 	h.Handler(podTemplateColumns, nil, printPodTemplate)
 	h.Handler(podTemplateColumns, nil, printPodTemplateList)
 	h.Handler(podDisruptionBudgetColumns, nil, printPodDisruptionBudget)
@@ -181,6 +180,8 @@ func AddHandlers(h *printers.HumanReadablePrinter) {
 	h.Handler(thirdPartyResourceDataColumns, nil, printThirdPartyResourceDataList)
 	h.Handler(clusterColumns, nil, printCluster)
 	h.Handler(clusterColumns, nil, printClusterList)
+	h.Handler(networkPolicyColumns, nil, printExtensionsNetworkPolicy)
+	h.Handler(networkPolicyColumns, nil, printExtensionsNetworkPolicyList)
 	h.Handler(networkPolicyColumns, nil, printNetworkPolicy)
 	h.Handler(networkPolicyColumns, nil, printNetworkPolicyList)
 	h.Handler(roleColumns, nil, printRole)
@@ -198,6 +199,8 @@ func AddHandlers(h *printers.HumanReadablePrinter) {
 	h.Handler(podPresetColumns, nil, printPodPreset)
 	h.Handler(podPresetColumns, nil, printPodPresetList)
 	h.Handler(statusColumns, nil, printStatus)
+	h.Handler(controllerRevisionColumns, nil, printControllerRevision)
+	h.Handler(controllerRevisionColumns, nil, printControllerRevisionList)
 }
 
 // Pass ports=nil for all ports.
@@ -244,10 +247,24 @@ func translateTimestamp(timestamp metav1.Time) string {
 	return printers.ShortHumanDuration(time.Now().Sub(timestamp.Time))
 }
 
-func printPodBase(pod *api.Pod, w io.Writer, options printers.PrintOptions) error {
-	name := printers.FormatResourceName(options.Kind, pod.Name, options.WithKind)
-	namespace := pod.Namespace
+var (
+	podSuccessConditions = []metav1alpha1.TableRowCondition{{Type: metav1alpha1.RowCompleted, Status: metav1alpha1.ConditionTrue, Reason: string(api.PodSucceeded), Message: "The pod has completed successfully."}}
+	podFailedConditions  = []metav1alpha1.TableRowCondition{{Type: metav1alpha1.RowCompleted, Status: metav1alpha1.ConditionTrue, Reason: string(api.PodFailed), Message: "The pod failed."}}
+)
 
+func printPodList(podList *api.PodList, options printers.PrintOptions) ([]metav1alpha1.TableRow, error) {
+	rows := make([]metav1alpha1.TableRow, 0, len(podList.Items))
+	for i := range podList.Items {
+		r, err := printPod(&podList.Items[i], options)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, r...)
+	}
+	return rows, nil
+}
+
+func printPod(pod *api.Pod, options printers.PrintOptions) ([]metav1alpha1.TableRow, error) {
 	restarts := 0
 	totalContainers := len(pod.Spec.Containers)
 	readyContainers := 0
@@ -255,6 +272,17 @@ func printPodBase(pod *api.Pod, w io.Writer, options printers.PrintOptions) erro
 	reason := string(pod.Status.Phase)
 	if pod.Status.Reason != "" {
 		reason = pod.Status.Reason
+	}
+
+	row := metav1alpha1.TableRow{
+		Object: runtime.RawExtension{Object: pod},
+	}
+
+	switch pod.Status.Phase {
+	case api.PodSucceeded:
+		row.Conditions = podSuccessConditions
+	case api.PodFailed:
+		row.Conditions = podFailedConditions
 	}
 
 	initializing := false
@@ -313,21 +341,7 @@ func printPodBase(pod *api.Pod, w io.Writer, options printers.PrintOptions) erro
 		reason = "Terminating"
 	}
 
-	if options.WithNamespace {
-		if _, err := fmt.Fprintf(w, "%s\t", namespace); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintf(w, "%s\t%d/%d\t%s\t%d\t%s",
-		name,
-		readyContainers,
-		totalContainers,
-		reason,
-		restarts,
-		translateTimestamp(pod.CreationTimestamp),
-	); err != nil {
-		return err
-	}
+	row.Cells = append(row.Cells, pod.Name, fmt.Sprintf("%d/%d", readyContainers, totalContainers), reason, restarts, translateTimestamp(pod.CreationTimestamp))
 
 	if options.Wide {
 		nodeName := pod.Spec.NodeName
@@ -338,22 +352,10 @@ func printPodBase(pod *api.Pod, w io.Writer, options printers.PrintOptions) erro
 		if nodeName == "" {
 			nodeName = "<none>"
 		}
-		if _, err := fmt.Fprintf(w, "\t%s\t%s",
-			podIP,
-			nodeName,
-		); err != nil {
-			return err
-		}
+		row.Cells = append(row.Cells, podIP, nodeName)
 	}
 
-	if _, err := fmt.Fprint(w, printers.AppendLabels(pod.Labels, options.ColumnLabels)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprint(w, printers.AppendAllLabels(options.ShowLabels, pod.Labels)); err != nil {
-		return err
-	}
-
-	return nil
+	return []metav1alpha1.TableRow{row}, nil
 }
 
 func printPodTemplate(pod *api.PodTemplate, w io.Writer, options printers.PrintOptions) error {
@@ -1156,10 +1158,7 @@ func getNodeExternalIP(node *api.Node) string {
 // * a kubeadm.alpha.kubernetes.io/role label
 // If no role is found, ("", nil) is returned
 func findNodeRole(node *api.Node) string {
-	if role := node.Labels[metav1.NodeLabelRole]; role != "" {
-		return role
-	}
-	if role := node.Labels[metav1.NodeLabelKubeadmAlphaRole]; role != "" {
+	if role := node.Labels[kubeadm.NodeLabelKubeadmAlphaRole]; role != "" {
 		return role
 	}
 	// No role found
@@ -1856,7 +1855,7 @@ func printPodSecurityPolicyList(list *extensions.PodSecurityPolicyList, w io.Wri
 	return nil
 }
 
-func printNetworkPolicy(networkPolicy *extensions.NetworkPolicy, w io.Writer, options printers.PrintOptions) error {
+func printExtensionsNetworkPolicy(networkPolicy *extensions.NetworkPolicy, w io.Writer, options printers.PrintOptions) error {
 	name := printers.FormatResourceName(options.Kind, networkPolicy.Name, options.WithKind)
 
 	namespace := networkPolicy.Namespace
@@ -1876,7 +1875,36 @@ func printNetworkPolicy(networkPolicy *extensions.NetworkPolicy, w io.Writer, op
 	return err
 }
 
-func printNetworkPolicyList(list *extensions.NetworkPolicyList, w io.Writer, options printers.PrintOptions) error {
+func printExtensionsNetworkPolicyList(list *extensions.NetworkPolicyList, w io.Writer, options printers.PrintOptions) error {
+	for i := range list.Items {
+		if err := printExtensionsNetworkPolicy(&list.Items[i], w, options); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printNetworkPolicy(networkPolicy *networking.NetworkPolicy, w io.Writer, options printers.PrintOptions) error {
+	name := printers.FormatResourceName(options.Kind, networkPolicy.Name, options.WithKind)
+
+	namespace := networkPolicy.Namespace
+
+	if options.WithNamespace {
+		if _, err := fmt.Fprintf(w, "%s\t", namespace); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(w, "%s\t%v\t%s", name, metav1.FormatLabelSelector(&networkPolicy.Spec.PodSelector), translateTimestamp(networkPolicy.CreationTimestamp)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(w, printers.AppendLabels(networkPolicy.Labels, options.ColumnLabels)); err != nil {
+		return err
+	}
+	_, err := fmt.Fprint(w, printers.AppendAllLabels(options.ShowLabels, networkPolicy.Labels))
+	return err
+}
+
+func printNetworkPolicyList(list *networking.NetworkPolicyList, w io.Writer, options printers.PrintOptions) error {
 	for i := range list.Items {
 		if err := printNetworkPolicy(&list.Items[i], w, options); err != nil {
 			return err
@@ -1967,4 +1995,40 @@ func formatEventSource(es api.EventSource) string {
 		EventSourceString = append(EventSourceString, es.Host)
 	}
 	return strings.Join(EventSourceString, ", ")
+}
+
+func printControllerRevision(history *apps.ControllerRevision, w io.Writer, options printers.PrintOptions) error {
+	name := printers.FormatResourceName(options.Kind, history.Name, options.WithKind)
+
+	if options.WithNamespace {
+		if _, err := fmt.Fprintf(w, "%s\t", history.Namespace); err != nil {
+			return err
+		}
+	}
+
+	controllerRef := controller.GetControllerOf(history)
+	controllerName := "<none>"
+	if controllerRef != nil {
+		withKind := true
+		controllerName = printers.FormatResourceName(controllerRef.Kind, controllerRef.Name, withKind)
+	}
+	revision := history.Revision
+	age := translateTimestamp(history.CreationTimestamp)
+	if _, err := fmt.Fprintf(w, "%s\t%s\t%d\t%s", name, controllerName, revision, age); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprint(w, printers.AppendLabels(history.Labels, options.ColumnLabels)); err != nil {
+		return err
+	}
+	_, err := fmt.Fprint(w, printers.AppendAllLabels(options.ShowLabels, history.Labels))
+	return err
+}
+
+func printControllerRevisionList(list *apps.ControllerRevisionList, w io.Writer, options printers.PrintOptions) error {
+	for _, item := range list.Items {
+		if err := printControllerRevision(&item, w, options); err != nil {
+			return err
+		}
+	}
+	return nil
 }

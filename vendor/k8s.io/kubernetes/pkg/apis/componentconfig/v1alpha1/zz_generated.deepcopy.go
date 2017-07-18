@@ -217,6 +217,11 @@ func DeepCopy_v1alpha1_KubeletConfiguration(in interface{}, out interface{}, c *
 			*out = new(int32)
 			**out = **in
 		}
+		if in.CAdvisorPort != nil {
+			in, out := &in.CAdvisorPort, &out.CAdvisorPort
+			*out = new(int32)
+			**out = **in
+		}
 		if in.OOMScoreAdj != nil {
 			in, out := &in.OOMScoreAdj, &out.OOMScoreAdj
 			*out = new(int32)
@@ -334,16 +339,6 @@ func DeepCopy_v1alpha1_KubeletConfiguration(in interface{}, out interface{}, c *
 			in, out := &in.AllowedUnsafeSysctls, &out.AllowedUnsafeSysctls
 			*out = make([]string, len(*in))
 			copy(*out, *in)
-		}
-		if in.ExperimentalDockershim != nil {
-			in, out := &in.ExperimentalDockershim, &out.ExperimentalDockershim
-			*out = new(bool)
-			**out = **in
-		}
-		if in.DockerDisableSharedPID != nil {
-			in, out := &in.DockerDisableSharedPID, &out.DockerDisableSharedPID
-			*out = new(bool)
-			**out = **in
 		}
 		if in.SystemReserved != nil {
 			in, out := &in.SystemReserved, &out.SystemReserved

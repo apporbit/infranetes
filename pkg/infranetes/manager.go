@@ -20,7 +20,7 @@ import (
 	"github.com/apporbit/infranetes/pkg/infranetes/provider/common"
 	"github.com/apporbit/infranetes/pkg/infranetes/types"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 var (
@@ -580,4 +580,13 @@ func (m *Manager) DelMount(ctx context.Context, req *icommon.DelMountRequest) (*
 	delete(m.mountMap, req.MountPoint)
 
 	return &icommon.DelMountResponse{}, nil
+}
+
+// TODO
+func (m *Manager) ContainerStats(ctx context.Context, req *kubeapi.ContainerStatsRequest) (*kubeapi.ContainerStatsResponse, error) {
+	return nil, fmt.Errorf("Not implemented")
+}
+
+func (m *Manager) ListContainerStats(ctx context.Context, req *kubeapi.ListContainerStatsRequest) (*kubeapi.ListContainerStatsResponse, error) {
+	return nil, fmt.Errorf("Not implemented")
 }
