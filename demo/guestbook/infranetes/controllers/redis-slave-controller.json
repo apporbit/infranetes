@@ -1,0 +1,46 @@
+{
+   "kind":"ReplicationController",
+   "apiVersion":"v1",
+   "metadata":{
+      "name":"redis-slave",
+      "labels":{
+         "app":"redis",
+         "role":"slave"
+      }
+   },
+   "spec":{
+      "replicas":1,
+      "selector":{
+         "app":"redis",
+         "role":"slave"
+      },
+      "template":{
+         "metadata":{
+            "labels":{
+               "app":"redis",
+               "role":"slave"
+            },
+           "annotations":{
+                "scheduler.alpha.kubernetes.io/tolerations": "[{\"key\": \"infranetes\", \"value\": \"true\"}]"
+            }
+         },
+         "spec":{
+            "containers":[
+               {
+                  "name":"redis-slave",
+                  "image":"kubernetes/redis-slave:v2",
+                  "ports":[
+                     {
+                        "name":"redis-server",
+                        "containerPort":6379
+                     }
+                  ]
+               }
+            ],
+            "nodeSelector": {
+                    "infranetes": "true"
+            }
+         }
+      }
+   }
+}
