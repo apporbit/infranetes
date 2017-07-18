@@ -25,7 +25,7 @@ import (
 	"github.com/apporbit/infranetes/pkg/infranetes/types"
 	"github.com/apporbit/infranetes/pkg/utils"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type podData struct {

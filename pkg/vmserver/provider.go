@@ -8,7 +8,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
 	"github.com/apporbit/infranetes/pkg/common"
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type ContainerProvider interface {

@@ -15,7 +15,7 @@ import (
 	"github.com/apporbit/infranetes/pkg/common/gcp"
 	"github.com/apporbit/infranetes/pkg/infranetes/provider"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type gcpImageProvider struct {

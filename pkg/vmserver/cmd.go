@@ -15,7 +15,7 @@ import (
 
 	"github.com/apporbit/infranetes/pkg/common"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 func (m *VMserver) RunCmd(ctx context.Context, req *common.RunCmdRequest) (*common.RunCmdResponse, error) {

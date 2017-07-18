@@ -6,7 +6,7 @@ import (
 	"github.com/apporbit/infranetes/pkg/infranetes/provider/common"
 	"github.com/apporbit/infranetes/pkg/infranetes/types"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 type PodProvider interface {

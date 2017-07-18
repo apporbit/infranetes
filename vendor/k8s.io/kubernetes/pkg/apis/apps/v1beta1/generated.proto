@@ -25,12 +25,43 @@ import "k8s.io/apimachinery/pkg/apis/meta/v1/generated.proto";
 import "k8s.io/apimachinery/pkg/runtime/generated.proto";
 import "k8s.io/apimachinery/pkg/runtime/schema/generated.proto";
 import "k8s.io/apimachinery/pkg/util/intstr/generated.proto";
-import "k8s.io/apiserver/pkg/apis/example/v1/generated.proto";
 import "k8s.io/kubernetes/pkg/api/v1/generated.proto";
 import "k8s.io/kubernetes/pkg/apis/policy/v1beta1/generated.proto";
 
 // Package-wide variables from generator "generated".
 option go_package = "v1beta1";
+
+// ControllerRevision implements an immutable snapshot of state data. Clients
+// are responsible for serializing and deserializing the objects that contain
+// their internal state.
+// Once a ControllerRevision has been successfully created, it can not be updated.
+// The API Server will fail validation of all requests that attempt to mutate
+// the Data field. ControllerRevisions may, however, be deleted. Note that, due to its use by both
+// the DaemonSet and StatefulSet controllers for update and rollback, this object is beta. However,
+// it may be subject to name and representation changes in future releases, and clients should not
+// depend on its stability. It is primarily for internal use by controllers.
+message ControllerRevision {
+  // Standard object's metadata.
+  // More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+  // +optional
+  optional k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+
+  // Data is the serialized representation of the state.
+  optional k8s.io.apimachinery.pkg.runtime.RawExtension data = 2;
+
+  // Revision indicates the revision of the state represented by Data.
+  optional int64 revision = 3;
+}
+
+// ControllerRevisionList is a resource containing a list of ControllerRevision objects.
+message ControllerRevisionList {
+  // More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata
+  // +optional
+  optional k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+
+  // Items is the list of ControllerRevisions
+  repeated ControllerRevision items = 2;
+}
 
 // Deployment enables declarative updates for Pods and ReplicaSets.
 message Deployment {
@@ -194,7 +225,7 @@ message DeploymentStrategy {
 }
 
 message RollbackConfig {
-  // The revision to rollback to. If set to 0, rollbck to the last revision.
+  // The revision to rollback to. If set to 0, rollback to the last revision.
   // +optional
   optional int64 revision = 1;
 }
@@ -229,17 +260,24 @@ message RollingUpdateDeployment {
   optional k8s.io.apimachinery.pkg.util.intstr.IntOrString maxSurge = 2;
 }
 
+// RollingUpdateStatefulSetStrategy is used to communicate parameter for RollingUpdateStatefulSetStrategyType.
+message RollingUpdateStatefulSetStrategy {
+  // Partition indicates the ordinal at which the StatefulSet should be
+  // partitioned.
+  optional int32 partition = 1;
+}
+
 // Scale represents a scaling request for a resource.
 message Scale {
-  // Standard object metadata; More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#metadata.
+  // Standard object metadata; More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#metadata.
   // +optional
   optional k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
 
-  // defines the behavior of the scale. More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status.
+  // defines the behavior of the scale. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status.
   // +optional
   optional ScaleSpec spec = 2;
 
-  // current status of the scale. More info: http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#spec-and-status. Read-only.
+  // current status of the scale. More info: https://git.k8s.io/community/contributors/devel/api-conventions.md#spec-and-status. Read-only.
   // +optional
   optional ScaleStatus status = 3;
 }
@@ -347,15 +385,57 @@ message StatefulSetSpec {
   // all pods at once.
   // +optional
   optional string podManagementPolicy = 6;
+
+  // updateStrategy indicates the StatefulSetUpdateStrategy that will be
+  // employed to update Pods in the StatefulSet when a revision is made to
+  // Template.
+  optional StatefulSetUpdateStrategy updateStrategy = 7;
+
+  // revisionHistoryLimit is the maximum number of revisions that will
+  // be maintained in the StatefulSet's revision history. The revision history
+  // consists of all revisions not represented by a currently applied
+  // StatefulSetSpec version. The default value is 10.
+  optional int32 revisionHistoryLimit = 8;
 }
 
 // StatefulSetStatus represents the current state of a StatefulSet.
 message StatefulSetStatus {
-  // observedGeneration is the most recent generation observed by this StatefulSet.
+  // observedGeneration is the most recent generation observed for this StatefulSet. It corresponds to the
+  // StatefulSet's generation, which is updated on mutation by the API Server.
   // +optional
   optional int64 observedGeneration = 1;
 
-  // replicas is the number of actual replicas.
+  // replicas is the number of Pods created by the StatefulSet controller.
   optional int32 replicas = 2;
+
+  // readyReplicas is the number of Pods created by the StatefulSet controller that have a Ready Condition.
+  optional int32 readyReplicas = 3;
+
+  // currentReplicas is the number of Pods created by the StatefulSet controller from the StatefulSet version
+  // indicated by currentRevision.
+  optional int32 currentReplicas = 4;
+
+  // updatedReplicas is the number of Pods created by the StatefulSet controller from the StatefulSet version
+  // indicated by updateRevision.
+  optional int32 updatedReplicas = 5;
+
+  // currentRevision, if not empty, indicates the version of the StatefulSet used to generate Pods in the
+  // sequence [0,currentReplicas).
+  optional string currentRevision = 6;
+
+  // updateRevision, if not empty, indicates the version of the StatefulSet used to generate Pods in the sequence
+  // [replicas-updatedReplicas,replicas)
+  optional string updateRevision = 7;
+}
+
+// StatefulSetUpdateStrategy indicates the strategy that the StatefulSet
+// controller will use to perform updates. It includes any additional parameters
+// necessary to perform the update for the indicated strategy.
+message StatefulSetUpdateStrategy {
+  // Type indicates the type of the StatefulSetUpdateStrategy.
+  optional string type = 1;
+
+  // RollingUpdate is used to communicate parameters when Type is RollingUpdateStatefulSetStrategyType.
+  optional RollingUpdateStatefulSetStrategy rollingUpdate = 2;
 }
 

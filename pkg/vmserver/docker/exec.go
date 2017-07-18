@@ -20,7 +20,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/util/ioutils"
 	utilexec "k8s.io/kubernetes/pkg/util/exec"
 
-	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1"
+	kubeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/v1alpha1/runtime"
 )
 
 // operationTimeout is the error returned when the docker operations are timeout.
