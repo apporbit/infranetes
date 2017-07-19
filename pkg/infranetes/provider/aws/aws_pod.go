@@ -275,13 +275,17 @@ func (v *awsPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 		return errors.New("PreCreateContainer: podData's VM wasn't an aws VM struct")
 	}
 
-	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
-	if err == nil && len(result.Image.RepoTags) == 1 {
+// Old code
+/*	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
+	if err == nil && result.Image != nil {
 		glog.Infof("PreCreateContainer: translated %v to %v", req.Config.Image.Image, result.Image.Id)
 		vm.AMI = result.Image.Id
 	} else {
 		return fmt.Errorf("PreCreateContainer: Couldn't translate %v: err = %v and result = %v", req.Config.Image.Image, err, result)
 	}
+*/
+	// Don't need to convert, getting the AMI here
+	vm.AMI = req.Config.Image.Image
 
 	newPodData, err := v.bootSandbox(vm, req.SandboxConfig, data.Ip, volumes)
 	if err != nil {

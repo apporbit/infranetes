@@ -59,7 +59,7 @@ func toRuntimeAPIImage(image *ec2.Image) (*kubeapi.Image, error) {
 		return nil, errors.New("unable to convert a nil pointer to a runtime API image")
 	}
 
-	size := uint64(0)
+	size := uint64(1)
 
 	name := image.ImageId
 	for _, tag := range image.Tags {

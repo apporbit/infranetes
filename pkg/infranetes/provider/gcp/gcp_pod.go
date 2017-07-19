@@ -260,7 +260,7 @@ func (v *gcpPodProvider) PreCreateContainer(data *common.PodData, req *kubeapi.C
 	}
 
 	result, err := imageStatus(&kubeapi.ImageStatusRequest{Image: req.Config.Image})
-	if err == nil && len(result.Image.RepoTags) == 1 {
+	if err == nil && result.Image != nil {
 		glog.Infof("PreCreateContainer: translated %v to %v", req.Config.Image.Image, result.Image.Id)
 		vm.SourceImage = result.Image.Id
 	} else {

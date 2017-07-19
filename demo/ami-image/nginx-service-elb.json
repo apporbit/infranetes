@@ -1,0 +1,20 @@
+{
+    "kind": "Service",
+    "apiVersion": "v1",
+    "metadata": {
+        "name": "test-service"
+    },
+    "spec": {
+        "selector": {
+            "nginx-test": "true"
+        },
+        "ports": [
+            {
+                "protocol": "TCP",
+                "port": 80,
+                "targetPort":80 
+            }
+        ],
+        "type": "LoadBalancer"
+    }
+}
