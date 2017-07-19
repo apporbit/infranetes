@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-node
+  namespace: default
+  labels:
+    nginx-test: "true"
+  annotations:
+    scheduler.alpha.kubernetes.io/tolerations: '[{"key": "infranetes", "value": "true"}]'
+spec:
+  containers:
+  - image: nginx:latest
+    imagePullPolicy: IfNotPresent
+    name: nginx
+  nodeSelector:
+    infranetes: "true"
+  restartPolicy: Never

@@ -171,6 +171,24 @@ much like one build the `infranetes-base` image above, one can modify any image 
 
 1. One can take any Linux AMI and copy `vmserver` to it as above, but `vmserver.init` will be modified to run have an added options of `-contprovider fake`
 
-2. `infranetes` will be run with a an added option of `-imgprovider aws`, this will instruct it to search for images in aws ami catalog
+2. images that one creates (with `vmserver` added) needed to be tagged with 2 tags.  `infranetes=true` and `infranetes.image_name=<name>:<version>` ex: `nginix:latest`
 
-3. images that one creates (with `vmserver` added) needed to be tagged with 2 tags.  `infranetes=true` and `infranetes.image_name=<name>:<version>` ex: `nginix:latest` 
+3. `infranetes` will be run with a an added option of `-imgprovider aws`, this will instruct it to search for images in aws ami catalog
+ 
+example: 
+    
+1. boot `infranetes-base`
+ 
+2. ssh into it
+    
+3. `sudo apt-get install nginx`
+
+4. modify `/etc/init.d/vmserver` to use DAEMON_OPTS with `-contprovider fake`
+     
+4. save as a new image "infranetes-nginx"
+    
+5. tag image as described above
+
+6. restart `infranetes` with `-imgprovider aws`
+
+See [demo/ami-image](demo/ami-image) for how one would use this ami image.
