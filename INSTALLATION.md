@@ -160,5 +160,17 @@ on a macine that can use kubectl to manage the kubernetes cluster label and tain
  $ kubectl taint node <name> infranetes=true:NoSchedule
  $ kubectl label node <name> infrantes=true
  ```
----
+
 Congratulations, you should know have a working kubernetes cluster that can selected pods into independent VMs
+
+---
+
+## Using it to run AMIs
+
+much like one build the `infranetes-base` image above, one can modify any image to work with infranetes.
+
+1. One can take any Linux AMI and copy `vmserver` to it as above, but `vmserver.init` will be modified to run have an added options of `-contprovider fake`
+
+2. `infranetes` will be run with a an added option of `-imgprovider aws`, this will instruct it to search for images in aws ami catalog
+
+3. images that one creates (with `vmserver` added) needed to be tagged with 2 tags.  `infranetes=true` and `infranetes.image_name=<name>:<version>` ex: `nginix:latest` 
