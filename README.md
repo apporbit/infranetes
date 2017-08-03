@@ -12,7 +12,7 @@ Kubernetes style management will apply to these  virtual machines.
 For example, secrets and configmaps will be populated within the virtual machine.
 
 In addition, Kubernetes will be able to execute health checks and resource monitor the VMs in the exact same way it manges traditional pods.
-This means, that Kuernetes can start/restart/kill the VMs as needed based on horizontal scaling needs of the provided service and the health of the components making up the service.
+This means, that Kubernetes can start/restart/kill the VMs as needed based on horizontal scaling needs of the provided service and the health of the components making up the service.
 Infranetes accomplishes this by using the same exact pod configuration mechanisms that are used today.
 
 Infranetes' VMs are used within a Kubernetes cluster in 2 ways.
